@@ -64,7 +64,6 @@ HTML = r"""
     <label>Output</label>
     <div class="row">
       <label class="inline"><input type="radio" name="output_mode" value="single" {{ 'checked' if output_mode == 'single' else '' }}> Single folder</label>
-      <label class="inline"><input type="radio" name="output_mode" value="single_stem" {{ 'checked' if output_mode == 'single_stem' else '' }}> Single output filename</label>
       <label class="inline"><input type="radio" name="output_mode" value="same_as_source" {{ 'checked' if output_mode == 'same_as_source' else '' }}> Same folder as each source</label>
     </div>
     <div id="output_folder_section">
@@ -72,10 +71,10 @@ HTML = r"""
       <input type="text" name="output_folder" id="output_folder" placeholder="e.g. C:\Users\You\Pictures\output" value="{{ output_folder or '' }}">
       <p class="hint">Leave empty to use &quot;batch_output&quot; inside the input folder (folder mode only).</p>
     </div>
-    <div id="output_stem_section" style="display: none;">
-      <label>Output filename (without extension)</label>
-      <input type="text" name="output_stem" id="output_stem" placeholder="e.g. result" value="{{ output_stem or '' }}">
-      <p class="hint">Every image will use this name; extension is added automatically. If multiple files go to the same folder, a suffix (_1, _2, …) is added.</p>
+    <div id="output_stem_section" style="margin-top: 8px;">
+      <label class="inline"><input type="checkbox" name="use_single_stem" id="use_single_stem" {{ 'checked' if use_single_stem else '' }}> Use single output filename</label>
+      <input type="text" name="output_stem" id="output_stem" placeholder="e.g. result (optional)" value="{{ output_stem or '' }}" style="margin-left: 8px; width: 180px;">
+      <p class="hint">If set, every image is saved with this name (extension added automatically). If multiple files go to the same folder, a suffix (_1, _2, …) is added. Works with both output modes above.</p>
     </div>
     <p class="hint" id="output_same_hint" style="display: none;">Each file is saved next to its source. If a name is already in use, a suffix (_1, _2, …) is added automatically.</p>
 
@@ -181,21 +180,13 @@ HTML = r"""
     function toggleOutputMode() {
       var mode = document.querySelector('input[name="output_mode"]:checked');
       var folderSection = document.getElementById('output_folder_section');
-      var stemSection = document.getElementById('output_stem_section');
       var sameHint = document.getElementById('output_same_hint');
       if (mode && mode.value === 'same_as_source') {
         folderSection.style.display = 'none';
-        stemSection.style.display = 'none';
         sameHint.style.display = 'block';
         document.getElementById('output_folder').removeAttribute('required');
-      } else if (mode && mode.value === 'single_stem') {
-        folderSection.style.display = 'block';
-        stemSection.style.display = 'block';
-        sameHint.style.display = 'none';
-        document.getElementById('output_folder').setAttribute('required', 'required');
       } else {
         folderSection.style.display = 'block';
-        stemSection.style.display = 'none';
         sameHint.style.display = 'none';
         document.getElementById('output_folder').removeAttribute('required');
       }
@@ -273,6 +264,7 @@ def _template_context(**kwargs) -> dict:
         "input_file_list": None,
         "output_mode": "single",
         "output_folder": None,
+        "use_single_stem": False,
         "output_stem": None,
         "resize_w": None,
         "resize_h": None,
@@ -329,6 +321,7 @@ def index():
             input_file_list=request.args.get("input_file_list"),
             output_mode=request.args.get("output_mode", "single"),
             output_folder=request.args.get("output_folder"),
+            use_single_stem=request.args.get("use_single_stem") == "on",
             output_stem=request.args.get("output_stem"),
             resize_w=request.args.get("resize_w"),
             resize_h=request.args.get("resize_h"),
@@ -359,8 +352,9 @@ def run():
 
     output_mode = (request.form.get("output_mode") or "single").strip()
     output_to_source = output_mode == "same_as_source"
+    use_single_stem = request.form.get("use_single_stem") == "on"
     output_stem_raw = (request.form.get("output_stem") or "").strip()
-    output_stem = output_stem_raw if output_mode == "single_stem" else None
+    output_stem = output_stem_raw if use_single_stem and output_stem_raw else None
 
     def _ctx(**kw):
         return _template_context(
@@ -369,9 +363,13 @@ def run():
             input_file_list=file_list_text or request.form.get("input_file_list"),
             output_mode=output_mode,
             output_folder=out or request.form.get("output_folder"),
+            use_single_stem=use_single_stem,
             output_stem=output_stem_raw or request.form.get("output_stem"),
             **kw,
         )
+
+    if use_single_stem and not output_stem_raw:
+        return render_template_string(HTML, **_ctx(log="Error: Output filename is required when “Use single output filename” is checked."))
 
     if input_mode == "file_list":
         if not file_list_text:
@@ -382,9 +380,7 @@ def run():
                 HTML,
                 **_ctx(log="Error: No valid image paths found. Check that paths exist and have an image extension (.png, .jpg, etc.)."),
             )
-        if output_mode == "single_stem" and (not out or not output_stem_raw):
-            return render_template_string(HTML, **_ctx(log="Error: Output folder and output filename are required for “Single output filename”."))
-        if not output_to_source and output_mode != "single_stem" and not out:
+        if not output_to_source and not out:
             return render_template_string(HTML, **_ctx(log="Error: Output folder is required when using a single output folder."))
         inp = None
     else:
@@ -392,9 +388,7 @@ def run():
             return render_template_string(HTML, **_ctx(log="Error: Input folder is required."))
         if not Path(inp).is_dir():
             return render_template_string(HTML, **_ctx(log=f"Error: Not a valid folder: {inp}"))
-        if output_mode == "single_stem" and (not out or not output_stem_raw):
-            return render_template_string(HTML, **_ctx(log="Error: Output folder and output filename are required for “Single output filename”."))
-        if not output_to_source and output_mode != "single_stem" and not out:
+        if not output_to_source and not out:
             out = os.path.join(inp, "batch_output")
 
     if not output_to_source:
@@ -491,6 +485,7 @@ def run():
             input_file_list=file_list_text,
             output_mode=output_mode,
             output_folder=out,
+            use_single_stem=use_single_stem,
             output_stem=output_stem_raw,
             resize_w=request.form.get("resize_w"),
             resize_h=request.form.get("resize_h"),

@@ -302,8 +302,6 @@ def batch_process(
         return 0, 0, ["No image files to process. Use a folder or paste a list of file paths."], ""
     if not output_to_source and not output_folder:
         return 0, 0, ["Output folder is required when not using “Same as source”."], ""
-    if (output_stem or "").strip() and not output_folder:
-        return 0, 0, ["Output folder is required for “Single output filename”."], ""
 
     notice = ""
     suffix_used = False
@@ -313,9 +311,10 @@ def batch_process(
     errors: list[str] = []
 
     if output_to_source:
+        stem_override = (output_stem or "").strip() or None
         for i, path in enumerate(paths):
             parent = path.parent
-            stem = path.stem
+            stem = stem_override if stem_override else path.stem
             ext = _output_extension(path, effective_format)
             out_path, used = get_output_path(parent, stem, ext, path)
             if used:
