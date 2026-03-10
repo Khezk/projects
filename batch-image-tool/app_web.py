@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from flask import Flask, request, render_template_string, redirect, url_for
 
-from processor import batch_process, get_image_paths, parse_file_list
+from processor import batch_process, get_image_paths, parse_file_list, parse_ratio
 from presets import load_presets, load_presets_list, save_presets
 
 _BASE_DIR = Path(__file__).resolve().parent
@@ -109,7 +109,7 @@ HTML = r"""
           </select>
         </label>
         <label>Or target ratio (W:H)
-          <input type="text" name="pad_ratio" id="pad_ratio_input" placeholder="e.g. 1:1 or 3.14:7.2" value="{{ pad_ratio or '' }}">
+          <input type="text" name="pad_ratio" id="pad_ratio_input" placeholder="e.g. 16:9, 16/9, 1.778:1, or 1.778" value="{{ pad_ratio or '' }}">
         </label>
       </div>
       <div class="row" style="margin-top: 6px; font-size: 0.9rem;">
@@ -145,7 +145,7 @@ HTML = r"""
     </select>
 
     <label>JPEG quality (1–100)</label>
-    <input type="number" name="quality" min="1" max="100" value="{{ quality or 85 }}">
+    <input type="number" name="quality" min="1" max="100" value="{{ quality or 90 }}">
 
     <label>Rotate (degrees)</label>
     <input type="number" name="rotate" min="0" max="360" value="{{ rotate or 0 }}">
@@ -259,12 +259,12 @@ def parse_int(s, default=None):
 def _template_context(**kwargs) -> dict:
     base = {
         "presets": load_presets_list(_BASE_DIR),
-        "input_mode": "folder",
+        "input_mode": "file_list",
         "input_folder": None,
         "input_file_list": None,
-        "output_mode": "single",
+        "output_mode": "same_as_source",
         "output_folder": None,
-        "use_single_stem": False,
+        "use_single_stem": True,
         "output_stem": None,
         "resize_w": None,
         "resize_h": None,
@@ -273,11 +273,11 @@ def _template_context(**kwargs) -> dict:
         "keep_aspect": True,
         "pad_w": None,
         "pad_h": None,
-        "pad_ratio": None,
+        "pad_ratio": "0.708:1",
         "pad_align_x": "center",
         "pad_align_y": "center",
-        "output_format": "same",
-        "quality": "85",
+        "output_format": "png",
+        "quality": "90",
         "rotate": "0",
         "flip_h": False,
         "flip_v": False,
@@ -288,40 +288,17 @@ def _template_context(**kwargs) -> dict:
     return base
 
 
-def parse_ratio(s: str | None) -> tuple[float, float] | None:
-    """
-    Parse ratio string like '1:2' or '3.14:7.2' into (w_ratio, h_ratio).
-    Returns None if empty/invalid.
-    """
-    if s is None:
-        return None
-    s = s.strip()
-    if not s:
-        return None
-    if ":" not in s:
-        return None
-    a, b = s.split(":", 1)
-    try:
-        rw = float(a.strip())
-        rh = float(b.strip())
-    except ValueError:
-        return None
-    if rw <= 0 or rh <= 0:
-        return None
-    return (rw, rh)
-
-
 @app.route("/")
 def index():
     return render_template_string(
         HTML,
         **_template_context(
-            input_mode=request.args.get("input_mode", "folder"),
+            input_mode=request.args.get("input_mode", "file_list"),
             input_folder=request.args.get("input_folder"),
             input_file_list=request.args.get("input_file_list"),
-            output_mode=request.args.get("output_mode", "single"),
+            output_mode=request.args.get("output_mode", "same_as_source"),
             output_folder=request.args.get("output_folder"),
-            use_single_stem=request.args.get("use_single_stem") == "on",
+            use_single_stem=request.args.get("use_single_stem", "on") == "on",
             output_stem=request.args.get("output_stem"),
             resize_w=request.args.get("resize_w"),
             resize_h=request.args.get("resize_h"),
@@ -330,11 +307,11 @@ def index():
             keep_aspect=request.args.get("keep_aspect") == "on",
             pad_w=request.args.get("pad_w"),
             pad_h=request.args.get("pad_h"),
-            pad_ratio=request.args.get("pad_ratio"),
+            pad_ratio=request.args.get("pad_ratio", "0.708:1"),
             pad_align_x=request.args.get("pad_align_x", "center"),
             pad_align_y=request.args.get("pad_align_y", "center"),
-            output_format=request.args.get("output_format", "same"),
-            quality=request.args.get("quality", "85"),
+            output_format=request.args.get("output_format", "png"),
+            quality=request.args.get("quality", "90"),
             rotate=request.args.get("rotate", "0"),
             flip_h=request.args.get("flip_h") == "on",
             flip_v=request.args.get("flip_v") == "on",
@@ -345,12 +322,12 @@ def index():
 
 @app.route("/run", methods=["POST"])
 def run():
-    input_mode = (request.form.get("input_mode") or "folder").strip()
+    input_mode = (request.form.get("input_mode") or "file_list").strip()
     inp = (request.form.get("input_folder") or "").strip()
     file_list_text = (request.form.get("input_file_list") or "").strip()
     out = (request.form.get("output_folder") or "").strip()
 
-    output_mode = (request.form.get("output_mode") or "single").strip()
+    output_mode = (request.form.get("output_mode") or "same_as_source").strip()
     output_to_source = output_mode == "same_as_source"
     use_single_stem = request.form.get("use_single_stem") == "on"
     output_stem_raw = (request.form.get("output_stem") or "").strip()
@@ -409,7 +386,7 @@ def run():
     pad_align_y = (request.form.get("pad_align_y") or "center").strip().lower()
     fmt = request.form.get("output_format", "same").strip().lower()
     output_format = None if fmt == "same" else ("jpeg" if fmt == "jpeg" else fmt)
-    quality = parse_int(request.form.get("quality"), 85)
+    quality = parse_int(request.form.get("quality"), 90)
     rotate = parse_int(request.form.get("rotate"), 0) % 360
     flip_h = request.form.get("flip_h") == "on"
     flip_v = request.form.get("flip_v") == "on"
@@ -498,7 +475,7 @@ def run():
             pad_align_x=pad_align_x,
             pad_align_y=pad_align_y,
             output_format=fmt,
-            quality=request.form.get("quality", "85"),
+            quality=request.form.get("quality", "90"),
             rotate=request.form.get("rotate", "0"),
             flip_h=flip_h,
             flip_v=flip_v,

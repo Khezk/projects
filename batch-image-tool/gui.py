@@ -14,7 +14,7 @@ try:
 except ImportError:
     HAS_TK = False
 
-from processor import batch_process, get_image_paths, parse_file_list
+from processor import batch_process, get_image_paths, parse_file_list, parse_ratio
 from presets import load_presets
 
 
@@ -41,9 +41,9 @@ def run_tk():
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     # Variables
-    input_mode = tk.StringVar(value="folder")
+    input_mode = tk.StringVar(value="file_list")
     input_folder = tk.StringVar()
-    output_mode = tk.StringVar(value="single")
+    output_mode = tk.StringVar(value="same_as_source")
     output_folder = tk.StringVar()
     output_stem = tk.StringVar()
     resize_w = tk.StringVar(value="")
@@ -53,11 +53,11 @@ def run_tk():
     keep_aspect = tk.BooleanVar(value=True)
     pad_w = tk.StringVar(value="")
     pad_h = tk.StringVar(value="")
-    pad_ratio = tk.StringVar(value="")
+    pad_ratio = tk.StringVar(value="0.708:1")  # default: manga
     pad_align_x = tk.StringVar(value="center")
     pad_align_y = tk.StringVar(value="center")
-    output_format = tk.StringVar(value="Same as source")
-    quality = tk.IntVar(value=85)
+    output_format = tk.StringVar(value="png")
+    quality = tk.IntVar(value=90)
     rotate = tk.StringVar(value="0")
     flip_h = tk.BooleanVar(value=False)
     flip_v = tk.BooleanVar(value=False)
@@ -112,7 +112,7 @@ def run_tk():
     ttk.Button(out_row, text="Browse…", command=lambda: output_folder.set(filedialog.askdirectory() or output_folder.get())).pack(side=tk.RIGHT)
     out_stem_f = ttk.Frame(main)
     out_stem_f.grid(row=7, column=0, columnspan=2, sticky=tk.EW, pady=(4, 12))
-    use_single_stem = tk.BooleanVar(value=False)
+    use_single_stem = tk.BooleanVar(value=True)
     ttk.Checkbutton(out_stem_f, text="Use single output filename", variable=use_single_stem).pack(anchor=tk.W)
     ttk.Entry(out_stem_f, textvariable=output_stem, width=40).pack(fill=tk.X, pady=(2, 0))
     ttk.Label(out_stem_f, text="(filename without extension; used for both output modes above)").pack(anchor=tk.W)
@@ -152,6 +152,8 @@ def run_tk():
     _preset_names = ["", *sorted(_presets.keys(), key=str.lower)]
     preset_combo = ttk.Combobox(pad_ratio_f, width=10, state="readonly", values=_preset_names)
     preset_combo.pack(side=tk.LEFT, padx=(4, 8))
+    if "manga" in _presets:
+        preset_combo.set("manga")
 
     def _on_preset_change(_event=None):
         name = preset_combo.get()
@@ -259,17 +261,7 @@ def run_tk():
         ph = parse_int(pad_h.get())
         pad_to = (pw, ph) if (pw is not None and ph is not None and pw > 0 and ph > 0) else None
         ratio_str = (pad_ratio.get() or "").strip()
-        pad_ratio_tuple = None
-        if pad_to is None and ratio_str:
-            if ":" in ratio_str:
-                a, b = ratio_str.split(":", 1)
-                try:
-                    rw = float(a.strip())
-                    rh = float(b.strip())
-                    if rw > 0 and rh > 0:
-                        pad_ratio_tuple = (rw, rh)
-                except ValueError:
-                    pad_ratio_tuple = None
+        pad_ratio_tuple = parse_ratio(ratio_str) if (pad_to is None and ratio_str) else None
         align_x = (pad_align_x.get() or "center").strip().lower()
         align_y = (pad_align_y.get() or "center").strip().lower()
         fmt = None if output_format.get() == "Same as source" else output_format.get().strip().lower()

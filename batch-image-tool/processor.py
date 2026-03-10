@@ -10,6 +10,43 @@ from PIL import Image
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
 
 
+def parse_ratio(s: str | None) -> tuple[float, float] | None:
+    """
+    Parse a ratio string into (w_ratio, h_ratio). Accepts multiple formats:
+    - "16:9", "1920:1080" (colon)
+    - "16/9", "1.778/1" (slash)
+    - "1.778" (single number = width:1)
+    Returns None if empty or invalid.
+    """
+    if s is None:
+        return None
+    s = s.strip()
+    if not s:
+        return None
+    # Single number → width:1 (e.g. "1.778" for 16:9)
+    if ":" not in s and "/" not in s:
+        try:
+            w = float(s)
+            if w <= 0:
+                return None
+            return (w, 1.0)
+        except ValueError:
+            return None
+    # Two parts: split on colon or slash
+    sep = ":" if ":" in s else "/"
+    parts = s.split(sep, 1)
+    if len(parts) != 2:
+        return None
+    try:
+        rw = float(parts[0].strip())
+        rh = float(parts[1].strip())
+    except ValueError:
+        return None
+    if rw <= 0 or rh <= 0:
+        return None
+    return (rw, rh)
+
+
 def get_image_paths(folder: str) -> list[Path]:
     """Return list of image file paths in folder."""
     folder_path = Path(folder)
