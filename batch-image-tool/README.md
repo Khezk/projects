@@ -20,12 +20,16 @@ pip install -r requirements.txt
 
 ## Run the app
 
-**Easiest:** Double-click **`Launch.bat`**. It activates the venv (if present) and starts the app—no terminal or `cd` needed.
+You can run either the **web UI** or the **desktop (tkinter) UI**; choose the one you want.
 
-**From terminal:** `python run.py` or `python -m gui` (with venv activated if you use one).
+| Launcher | What it does |
+|----------|----------------|
+| **`Launch.bat`** or **`Launch-web.bat`** | Starts the **web UI** (browser at http://127.0.0.1:5000). No tkinter needed. |
+| **`Launch-tk.bat`** | Starts the **desktop (tkinter) window**. Requires tkinter. |
 
-- **Desktop (tkinter):** If your Python has tkinter, the desktop window opens.
-- **Web UI (no tkinter):** If you get `ModuleNotFoundError: No module named 'tkinter'`, the launcher starts the web UI; open **http://127.0.0.1:5000** in your browser. Or run `python -m app_web` directly.
+**From terminal (with venv activated):**
+- Web: `python run.py` or `python run.py --web` or `python -m app_web`
+- Desktop: `python run.py --tk` or `python -m gui`
 
 ## Features
 

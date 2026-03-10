@@ -1,6 +1,7 @@
 """
-Simple Windows GUI for batch image editing.
-Uses tkinter if available; otherwise launches the web UI (no tkinter required).
+Tkinter desktop GUI for batch image editing.
+Run directly: python -m gui (requires tkinter).
+Use python -m app_web or run.py --web for the web UI instead.
 """
 import os
 from pathlib import Path
@@ -51,12 +52,12 @@ def run_tk():
     # --- Input mode ---
     ttk.Label(main, text="Input:").grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
     mode_f = ttk.Frame(main)
-    mode_f.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
+    mode_f.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
     ttk.Radiobutton(mode_f, text="Folder", variable=input_mode, value="folder").pack(side=tk.LEFT, padx=(0, 12))
     ttk.Radiobutton(mode_f, text="List of file paths", variable=input_mode, value="file_list").pack(side=tk.LEFT)
 
     folder_f = ttk.Frame(main)
-    folder_f.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=(0, 4))
+    folder_f.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=(0, 2))
     root.columnconfigure(0, weight=1)
     main.columnconfigure(0, weight=1)
     ttk.Label(folder_f, text="Input folder").pack(anchor=tk.W)
@@ -66,7 +67,7 @@ def run_tk():
     ttk.Button(row1, text="Browse…", command=lambda: input_folder.set(filedialog.askdirectory() or input_folder.get())).pack(side=tk.RIGHT)
 
     list_f = ttk.Frame(main)
-    list_f.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=(0, 4))
+    list_f.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=(0, 2))
     ttk.Label(list_f, text="File paths (one per line)").pack(anchor=tk.W)
     file_list_text = scrolledtext.ScrolledText(list_f, height=8, width=60, wrap=tk.WORD)
     file_list_text.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
@@ -83,9 +84,9 @@ def run_tk():
     input_mode.trace_add("write", lambda *a: _toggle_input())
     _toggle_input()
 
-    ttk.Label(main, text="Output:").grid(row=4, column=0, sticky=tk.W, pady=(0, 4))
+    ttk.Label(main, text="Output:").grid(row=4, column=0, sticky=tk.W, pady=(12, 4))
     out_mode_f = ttk.Frame(main)
-    out_mode_f.grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
+    out_mode_f.grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
     ttk.Radiobutton(out_mode_f, text="Single folder", variable=output_mode, value="single").pack(side=tk.LEFT, padx=(0, 12))
     ttk.Radiobutton(out_mode_f, text="Same folder as each source", variable=output_mode, value="same_as_source").pack(side=tk.LEFT)
     row2 = ttk.Frame(main)
@@ -117,14 +118,14 @@ def run_tk():
     # --- Pad ---
     ttk.Label(main, text="Pad to target size (transparent PNG, optional):").grid(row=12, column=0, sticky=tk.W, pady=(0, 4))
     pad_f = ttk.Frame(main)
-    pad_f.grid(row=13, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
+    pad_f.grid(row=13, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
     ttk.Entry(pad_f, textvariable=pad_w, width=6).pack(side=tk.LEFT)
     ttk.Label(pad_f, text="×").pack(side=tk.LEFT, padx=2)
     ttk.Entry(pad_f, textvariable=pad_h, width=6).pack(side=tk.LEFT)
     ttk.Label(pad_f, text="px").pack(side=tk.LEFT, padx=(6, 0))
 
     pad_ratio_f = ttk.Frame(main)
-    pad_ratio_f.grid(row=14, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
+    pad_ratio_f.grid(row=14, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
     ttk.Label(pad_ratio_f, text="Preset").pack(side=tk.LEFT)
     _base_dir = Path(__file__).resolve().parent
     _presets = load_presets(_base_dir)
@@ -149,26 +150,27 @@ def run_tk():
     ttk.Combobox(pad_align_f, textvariable=pad_align_y, width=8, state="readonly", values=("top", "center", "bottom")).pack(side=tk.LEFT, padx=(4, 0))
 
     # --- Format & quality ---
-    ttk.Label(main, text="Output format:").grid(row=13, column=0, sticky=tk.W, pady=(0, 2))
+    ttk.Separator(main, orient=tk.HORIZONTAL).grid(row=16, column=0, columnspan=2, sticky=tk.EW, pady=(12, 8))
+    ttk.Label(main, text="Output format:").grid(row=17, column=0, sticky=tk.W, pady=(0, 2))
     fmt_combo = ttk.Combobox(main, textvariable=output_format, width=18, state="readonly",
                              values=("Same as source", "jpeg", "png", "webp", "bmp"))
-    fmt_combo.grid(row=14, column=0, sticky=tk.W, pady=(0, 4))
-    ttk.Label(main, text="JPEG quality (1–100):").grid(row=15, column=0, sticky=tk.W, pady=(0, 2))
-    ttk.Spinbox(main, textvariable=quality, from_=1, to=100, width=6).grid(row=16, column=0, sticky=tk.W, pady=(0, 8))
+    fmt_combo.grid(row=18, column=0, sticky=tk.W, pady=(0, 4))
+    ttk.Label(main, text="JPEG quality (1–100):").grid(row=19, column=0, sticky=tk.W, pady=(0, 2))
+    ttk.Spinbox(main, textvariable=quality, from_=1, to=100, width=6).grid(row=20, column=0, sticky=tk.W, pady=(0, 8))
 
     # --- Transform ---
-    ttk.Label(main, text="Rotate (degrees):").grid(row=17, column=0, sticky=tk.W, pady=(0, 2))
-    ttk.Spinbox(main, textvariable=rotate, from_=0, to=360, width=6).grid(row=18, column=0, sticky=tk.W, pady=(0, 4))
-    ttk.Checkbutton(main, text="Flip horizontal", variable=flip_h).grid(row=19, column=0, sticky=tk.W, pady=2)
-    ttk.Checkbutton(main, text="Flip vertical", variable=flip_v).grid(row=20, column=0, sticky=tk.W, pady=2)
-    ttk.Checkbutton(main, text="Convert to grayscale", variable=grayscale).grid(row=21, column=0, sticky=tk.W, pady=(2, 8))
+    ttk.Label(main, text="Rotate (degrees):").grid(row=21, column=0, sticky=tk.W, pady=(0, 2))
+    ttk.Spinbox(main, textvariable=rotate, from_=0, to=360, width=6).grid(row=22, column=0, sticky=tk.W, pady=(0, 4))
+    ttk.Checkbutton(main, text="Flip horizontal", variable=flip_h).grid(row=23, column=0, sticky=tk.W, pady=2)
+    ttk.Checkbutton(main, text="Flip vertical", variable=flip_v).grid(row=24, column=0, sticky=tk.W, pady=2)
+    ttk.Checkbutton(main, text="Convert to grayscale", variable=grayscale).grid(row=25, column=0, sticky=tk.W, pady=(2, 8))
 
     # --- Log & Run ---
-    ttk.Separator(main, orient=tk.HORIZONTAL).grid(row=24, column=0, columnspan=2, sticky=tk.EW, pady=8)
-    ttk.Label(main, text="Log:").grid(row=25, column=0, sticky=tk.W, pady=(0, 2))
+    ttk.Separator(main, orient=tk.HORIZONTAL).grid(row=26, column=0, columnspan=2, sticky=tk.EW, pady=(12, 8))
+    ttk.Label(main, text="Log:").grid(row=27, column=0, sticky=tk.W, pady=(0, 2))
     log = scrolledtext.ScrolledText(main, height=8, width=60, state=tk.DISABLED, wrap=tk.WORD)
-    log.grid(row=26, column=0, columnspan=2, sticky=tk.NSEW, pady=(0, 8))
-    main.rowconfigure(26, weight=1)
+    log.grid(row=28, column=0, columnspan=2, sticky=tk.NSEW, pady=(0, 8))
+    main.rowconfigure(28, weight=1)
 
     def log_msg(msg: str):
         log.config(state=tk.NORMAL)
@@ -307,28 +309,14 @@ def run_tk():
 
         threading.Thread(target=do_work, daemon=True).start()
 
-    ttk.Button(main, text="Run batch", command=run_batch).grid(row=28, column=0, columnspan=2, pady=8)
+    ttk.Button(main, text="Run batch", command=run_batch).grid(row=29, column=0, columnspan=2, pady=(8, 12))
 
     root.mainloop()
 
 
-def run_web():
-    """Launch the web-based UI (no tkinter)."""
-    from app_web import app, open_browser
-    import webbrowser
-    import threading
-    threading.Timer(1.0, open_browser).start()
-    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
-
-
-def run():
-    """Use tkinter GUI if available, otherwise web UI."""
-    if HAS_TK:
-        run_tk()
-    else:
-        print("tkinter not found. Starting web UI. Open http://127.0.0.1:5000 in your browser.")
-        run_web()
-
-
 if __name__ == "__main__":
-    run()
+    if not HAS_TK:
+        print("tkinter not found. Use the web UI instead: python -m app_web")
+        print("Or: python run.py --web")
+        raise SystemExit(1)
+    run_tk()
