@@ -21,8 +21,24 @@ from presets import load_presets
 def run_tk():
     root = tk.Tk()
     root.title("Batch Image Tool")
-    root.minsize(480, 520)
-    root.geometry("520x580")
+    root.minsize(520, 520)
+    root.geometry("580x820")
+
+    # Scrollable container so all controls (including file-list mode) are reachable
+    canvas = tk.Canvas(root, highlightthickness=0)
+    vbar = ttk.Scrollbar(root, orient=tk.VERTICAL, command=canvas.yview)
+    main = ttk.Frame(canvas, padding=12)
+
+    main.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.create_window((0, 0), window=main, anchor=tk.NW)
+    canvas.configure(yscrollcommand=vbar.set)
+
+    def _on_canvas_configure(_):
+        canvas.itemconfig(canvas.find_all()[0], width=canvas.winfo_width())
+    canvas.bind("<Configure>", _on_canvas_configure)
+
+    vbar.pack(side=tk.RIGHT, fill=tk.Y)
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     # Variables
     input_mode = tk.StringVar(value="folder")
@@ -46,9 +62,6 @@ def run_tk():
     flip_v = tk.BooleanVar(value=False)
     grayscale = tk.BooleanVar(value=False)
 
-    main = ttk.Frame(root, padding=12)
-    main.pack(fill=tk.BOTH, expand=True)
-
     # --- Input mode ---
     ttk.Label(main, text="Input:").grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
     mode_f = ttk.Frame(main)
@@ -69,7 +82,7 @@ def run_tk():
     list_f = ttk.Frame(main)
     list_f.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=(0, 2))
     ttk.Label(list_f, text="File paths (one per line)").pack(anchor=tk.W)
-    file_list_text = scrolledtext.ScrolledText(list_f, height=8, width=60, wrap=tk.WORD)
+    file_list_text = scrolledtext.ScrolledText(list_f, height=6, width=58, wrap=tk.WORD)
     file_list_text.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
     list_f.grid_remove()
 
@@ -168,9 +181,16 @@ def run_tk():
     # --- Log & Run ---
     ttk.Separator(main, orient=tk.HORIZONTAL).grid(row=26, column=0, columnspan=2, sticky=tk.EW, pady=(12, 8))
     ttk.Label(main, text="Log:").grid(row=27, column=0, sticky=tk.W, pady=(0, 2))
-    log = scrolledtext.ScrolledText(main, height=8, width=60, state=tk.DISABLED, wrap=tk.WORD)
+    log = scrolledtext.ScrolledText(main, height=6, width=58, state=tk.DISABLED, wrap=tk.WORD)
     log.grid(row=28, column=0, columnspan=2, sticky=tk.NSEW, pady=(0, 8))
     main.rowconfigure(28, weight=1)
+
+    def _on_mousewheel(event):
+        w = event.widget
+        if w == file_list_text or w == log:
+            return
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    root.bind_all("<MouseWheel>", _on_mousewheel)
 
     def log_msg(msg: str):
         log.config(state=tk.NORMAL)
