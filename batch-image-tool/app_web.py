@@ -58,7 +58,7 @@ HTML = r"""
     <div id="input_file_list_section" style="display: none;">
       <label>File paths (one per line; quotes and trailing punctuation are stripped)</label>
       <textarea name="input_file_list" id="input_file_list" rows="10" placeholder="Paste paths here, e.g.&#10;&quot;E:\Games\Project\img\char.png&quot;&#10;C:\Other\file.png" style="width: 100%; font-family: Consolas, monospace; font-size: 13px;">{{ input_file_list or '' }}</textarea>
-      <p class="hint">Each line = one image path. Supports &quot;path&quot;, 'path', or plain path.</p>
+      <p class="hint" id="file_list_count">Each line = one image path. Supports &quot;path&quot;, 'path', or plain path.</p>
     </div>
 
     <label>Output</label>
@@ -136,7 +136,7 @@ HTML = r"""
     </fieldset>
 
     <label>Output format</label>
-    <select name="output_format">
+    <select name="output_format" id="output_format">
       <option value="same" {{ 'selected' if output_format == 'same' else '' }}>Same as source</option>
       <option value="jpeg" {{ 'selected' if output_format == 'jpeg' else '' }}>JPEG</option>
       <option value="png" {{ 'selected' if output_format == 'png' else '' }}>PNG</option>
@@ -144,8 +144,10 @@ HTML = r"""
       <option value="bmp" {{ 'selected' if output_format == 'bmp' else '' }}>BMP</option>
     </select>
 
-    <label>JPEG quality (1–100)</label>
-    <input type="number" name="quality" min="1" max="100" value="{{ quality or 90 }}">
+    <div id="quality_section" style="display: {{ 'block' if output_format == 'jpeg' else 'none' }};">
+      <label>JPEG quality (1–100)</label>
+      <input type="number" name="quality" min="1" max="100" value="{{ quality or 90 }}">
+    </div>
 
     <div style="margin-top: 12px;">
       <label class="inline"><input type="checkbox" name="flip_h" {{ 'checked' if flip_h else '' }}> Flip horizontal</label>
@@ -159,10 +161,11 @@ HTML = r"""
       <label class="inline"><input type="checkbox" name="grayscale" {{ 'checked' if grayscale else '' }}> Grayscale</label>
     </div>
 
-    <button type="submit" id="btn">Run batch</button>
-  </form>
+    <label style="margin-top: 16px;">Log</label>
+    <div id="log">{{ log or 'Log will appear here after you run.' }}</div>
 
-  <div id="log">{{ log or 'Log will appear here after you run.' }}</div>
+    <button type="submit" id="btn" style="margin-top: 12px;">Run batch</button>
+  </form>
 
   <script>
     function toggleInputMode() {
@@ -201,6 +204,46 @@ HTML = r"""
     for (var j = 0; j < outputRadios.length; j++) outputRadios[j].addEventListener('change', toggleOutputMode);
     toggleOutputMode();
 
+    function toggleQualitySection() {
+      var fmt = document.getElementById('output_format').value;
+      document.getElementById('quality_section').style.display = (fmt === 'jpeg') ? 'block' : 'none';
+    }
+    document.getElementById('output_format').addEventListener('change', toggleQualitySection);
+    toggleQualitySection();
+
+    var IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif'];
+    function countPathLines(text) {
+      var lines = text.split(/[\r\n]+/);
+      var n = 0;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        if ((line.startsWith('"') && line.endsWith('"')) || (line.startsWith("'") && line.endsWith("'")))
+          line = line.slice(1, -1).trim();
+        line = line.replace(/[,\\t;]+$/, '');
+        var lower = line.toLowerCase();
+        for (var k = 0; k < IMAGE_EXTS.length; k++)
+          if (lower.endsWith(IMAGE_EXTS[k])) { n++; break; }
+      }
+      return n;
+    }
+    var fileListCountTimeout;
+    var fileListTa = document.getElementById('input_file_list');
+    var fileListCountEl = document.getElementById('file_list_count');
+    if (fileListTa && fileListCountEl) {
+      function updatePathCount() {
+        var n = countPathLines(fileListTa.value);
+        fileListCountEl.textContent = n === 0
+          ? 'Each line = one image path. Supports "path", \'path\', or plain path.'
+          : n + ' valid path(s) will be processed (only existing image files).';
+      }
+      fileListTa.addEventListener('input', function() {
+        clearTimeout(fileListCountTimeout);
+        fileListCountTimeout = setTimeout(updatePathCount, 300);
+      });
+      updatePathCount();
+    }
+
     document.getElementById('form').onsubmit = function() {
       document.getElementById('btn').disabled = true;
       document.getElementById('log').textContent = 'Processing…';
@@ -220,7 +263,7 @@ HTML = r"""
       btnSave.addEventListener('click', function() {
         var name = document.getElementById('save_preset_name').value.trim();
         var ratio = document.getElementById('pad_ratio_input').value.trim();
-        if (!name || !ratio || ratio.indexOf(':') === -1) { alert('Enter a name and a valid ratio (e.g. 0.708:1)'); return; }
+        if (!name || !ratio) { alert('Enter a name and a ratio (e.g. 16:9, 1.778, or 16/9).'); return; }
         var form = document.createElement('form');
         form.method = 'post';
         form.action = '/save_preset';
@@ -244,6 +287,13 @@ HTML = r"""
         form.submit();
       });
     }
+    // After a run, scroll the log into view so the user sees the result
+    (function() {
+      var logEl = document.getElementById('log');
+      if (logEl && (logEl.textContent.indexOf('Done.') !== -1 || logEl.textContent.indexOf('Error') === 0)) {
+        logEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    })();
   </script>
 </body>
 </html>

@@ -85,15 +85,42 @@ def run_tk():
     ttk.Label(list_f, text="File paths (one per line)").pack(anchor=tk.W)
     file_list_text = scrolledtext.ScrolledText(list_f, height=6, width=58, wrap=tk.WORD)
     file_list_text.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
+    file_list_count_label = ttk.Label(list_f, text="", foreground="#666")
+    file_list_count_label.pack(anchor=tk.W, pady=(2, 0))
     list_f.grid_remove()
+
+    _path_count_after_id = None
+
+    def _update_file_list_count():
+        nonlocal _path_count_after_id
+        _path_count_after_id = None
+        if input_mode.get() != "file_list":
+            return
+        text = file_list_text.get("1.0", tk.END).strip()
+        if not text:
+            file_list_count_label.config(text="")
+            return
+        paths = parse_file_list(text)
+        n = len(paths)
+        file_list_count_label.config(text=f"{n} valid path(s) will be processed." if n else "No valid paths (check paths exist and have image extension).")
+
+    def _on_file_list_key(_event):
+        nonlocal _path_count_after_id
+        if _path_count_after_id:
+            root.after_cancel(_path_count_after_id)
+        _path_count_after_id = root.after(400, _update_file_list_count)
+
+    file_list_text.bind("<KeyRelease>", _on_file_list_key)
 
     def _toggle_input():
         if input_mode.get() == "file_list":
             folder_f.grid_remove()
             list_f.grid()
+            _update_file_list_count()
         else:
             list_f.grid_remove()
             folder_f.grid()
+            file_list_count_label.config(text="")
 
     input_mode.trace_add("write", lambda *a: _toggle_input())
     _toggle_input()
@@ -177,8 +204,19 @@ def run_tk():
     fmt_combo = ttk.Combobox(main, textvariable=output_format, width=18, state="readonly",
                              values=("Same as source", "jpeg", "png", "webp", "bmp"))
     fmt_combo.grid(row=19, column=0, sticky=tk.W, pady=(0, 4))
-    ttk.Label(main, text="JPEG quality (1–100):").grid(row=20, column=0, sticky=tk.W, pady=(0, 2))
-    ttk.Spinbox(main, textvariable=quality, from_=1, to=100, width=6).grid(row=21, column=0, sticky=tk.W, pady=(0, 8))
+    quality_f = ttk.Frame(main)
+    quality_f.grid(row=20, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
+    ttk.Label(quality_f, text="JPEG quality (1–100):").grid(row=0, column=0, sticky=tk.W, pady=(0, 2))
+    ttk.Spinbox(quality_f, textvariable=quality, from_=1, to=100, width=6).grid(row=1, column=0, sticky=tk.W, pady=(0, 0))
+
+    def _toggle_quality_visibility(*_):
+        if (output_format.get() or "").strip().lower() == "jpeg":
+            quality_f.grid(row=20, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
+        else:
+            quality_f.grid_remove()
+
+    output_format.trace_add("write", _toggle_quality_visibility)
+    _toggle_quality_visibility()
 
     # --- Transform ---
     ttk.Checkbutton(main, text="Flip horizontal", variable=flip_h).grid(row=22, column=0, sticky=tk.W, pady=2)
@@ -190,9 +228,11 @@ def run_tk():
     # --- Log & Run ---
     ttk.Separator(main, orient=tk.HORIZONTAL).grid(row=28, column=0, columnspan=2, sticky=tk.EW, pady=(12, 8))
     ttk.Label(main, text="Log:").grid(row=29, column=0, sticky=tk.W, pady=(0, 2))
+    progress_label = ttk.Label(main, text="", foreground="#0066cc")
+    progress_label.grid(row=30, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
     log = scrolledtext.ScrolledText(main, height=6, width=58, state=tk.DISABLED, wrap=tk.WORD)
-    log.grid(row=30, column=0, columnspan=2, sticky=tk.NSEW, pady=(0, 8))
-    main.rowconfigure(30, weight=1)
+    log.grid(row=31, column=0, columnspan=2, sticky=tk.NSEW, pady=(0, 8))
+    main.rowconfigure(31, weight=1)
 
     def _on_mousewheel(event):
         w = event.widget
@@ -273,8 +313,14 @@ def run_tk():
         if not output_to_source:
             log_msg(f"Output: {out}")
         log_msg("Processing…")
+        run_btn.config(state=tk.DISABLED)
+        total = len(paths) if paths is not None else len(get_image_paths(inp))
+        progress_label.config(text=f"Processing 0/{total}…")
 
         def do_work():
+            def on_progress(c, t):
+                root.after(0, lambda: progress_label.config(text=f"Processing {c}/{t}…"))
+
             try:
                 if paths is not None:
                     success, fail, errs, notice = batch_process(
@@ -296,7 +342,7 @@ def run_tk():
                         flip_horizontal=flip_h.get(),
                         flip_vertical=flip_v.get(),
                         grayscale=grayscale.get(),
-                        progress_callback=lambda c, t: None,
+                        progress_callback=on_progress,
                     )
                 else:
                     success, fail, errs, notice = batch_process(
@@ -318,13 +364,20 @@ def run_tk():
                     flip_horizontal=flip_h.get(),
                     flip_vertical=flip_v.get(),
                     grayscale=grayscale.get(),
-                    progress_callback=lambda c, t: None,
+                    progress_callback=on_progress,
                     )
                 root.after(0, lambda: done(success, fail, errs, notice))
             except Exception as e:
-                root.after(0, lambda: log_msg(f"Error: {e}"))
+                root.after(0, lambda: on_error(e))
+
+        def on_error(e):
+            log_msg(f"Error: {e}")
+            progress_label.config(text="")
+            run_btn.config(state=tk.NORMAL)
 
         def done(success, fail, errs, notice):
+            progress_label.config(text="")
+            run_btn.config(state=tk.NORMAL)
             log_msg(f"Done. Success: {success}, Failed: {fail}")
             if notice:
                 log_msg(notice)
@@ -336,7 +389,8 @@ def run_tk():
 
         threading.Thread(target=do_work, daemon=True).start()
 
-    ttk.Button(main, text="Run batch", command=run_batch).grid(row=31, column=0, columnspan=2, pady=(8, 12))
+    run_btn = ttk.Button(main, text="Run batch", command=run_batch)
+    run_btn.grid(row=32, column=0, columnspan=2, pady=(8, 12))
 
     root.mainloop()
 
