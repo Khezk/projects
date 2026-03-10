@@ -100,6 +100,22 @@ def get_output_path(
     return parent / f"{stem}_9999{ext}", True  # fallback
 
 
+def get_next_path_for_stem(parent: Path, stem: str, ext: str) -> tuple[Path, bool]:
+    """
+    Return the next available path in parent with the given stem and extension.
+    Uses stem.ext, then stem_1.ext, stem_2.ext, ... so multiple files can go to the same folder.
+    Returns (path, used_suffix).
+    """
+    desired = parent / f"{stem}{ext}"
+    if not desired.exists():
+        return desired, False
+    for i in range(1, 10000):
+        candidate = parent / f"{stem}_{i}{ext}"
+        if not candidate.exists():
+            return candidate, True
+    return parent / f"{stem}_9999{ext}", True  # fallback
+
+
 def process_image(
     input_path: Path,
     output_dir: Path,
@@ -254,6 +270,7 @@ def batch_process(
     input_files: list[Path] | None = None,
     *,
     output_to_source: bool = False,
+    output_stem: str | None = None,
     resize: tuple[int, int] | None = None,
     max_width: int | None = None,
     max_height: int | None = None,
@@ -285,6 +302,8 @@ def batch_process(
         return 0, 0, ["No image files to process. Use a folder or paste a list of file paths."], ""
     if not output_to_source and not output_folder:
         return 0, 0, ["Output folder is required when not using “Same as source”."], ""
+    if (output_stem or "").strip() and not output_folder:
+        return 0, 0, ["Output folder is required for “Single output filename”."], ""
 
     notice = ""
     suffix_used = False
@@ -332,25 +351,51 @@ def batch_process(
     else:
         os.makedirs(output_folder, exist_ok=True)
         output_dir = Path(output_folder)
+        stem_override = (output_stem or "").strip() or None
         for i, path in enumerate(paths):
-            err = process_image(
-                path,
-                output_dir,
-                resize=resize,
-                max_width=max_width,
-                max_height=max_height,
-                keep_aspect=keep_aspect,
-                pad_to=pad_to,
-                pad_ratio=pad_ratio,
-                pad_align_x=pad_align_x,
-                pad_align_y=pad_align_y,
-                output_format=output_format,
-                quality=quality,
-                rotate_deg=rotate_deg,
-                flip_horizontal=flip_horizontal,
-                flip_vertical=flip_vertical,
-                grayscale=grayscale,
-            )
+            if stem_override:
+                ext = _output_extension(path, effective_format)
+                out_path, used = get_next_path_for_stem(output_dir, stem_override, ext)
+                if used:
+                    suffix_used = True
+                err = process_image(
+                    path,
+                    output_dir,
+                    output_path=out_path,
+                    resize=resize,
+                    max_width=max_width,
+                    max_height=max_height,
+                    keep_aspect=keep_aspect,
+                    pad_to=pad_to,
+                    pad_ratio=pad_ratio,
+                    pad_align_x=pad_align_x,
+                    pad_align_y=pad_align_y,
+                    output_format=output_format,
+                    quality=quality,
+                    rotate_deg=rotate_deg,
+                    flip_horizontal=flip_horizontal,
+                    flip_vertical=flip_vertical,
+                    grayscale=grayscale,
+                )
+            else:
+                err = process_image(
+                    path,
+                    output_dir,
+                    resize=resize,
+                    max_width=max_width,
+                    max_height=max_height,
+                    keep_aspect=keep_aspect,
+                    pad_to=pad_to,
+                    pad_ratio=pad_ratio,
+                    pad_align_x=pad_align_x,
+                    pad_align_y=pad_align_y,
+                    output_format=output_format,
+                    quality=quality,
+                    rotate_deg=rotate_deg,
+                    flip_horizontal=flip_horizontal,
+                    flip_vertical=flip_vertical,
+                    grayscale=grayscale,
+                )
             if err:
                 failed += 1
                 errors.append(f"{path.name}: {err}")
@@ -358,5 +403,7 @@ def batch_process(
                 success += 1
             if progress_callback:
                 progress_callback(i + 1, len(paths))
+        if suffix_used:
+            notice = "Some filenames were given a suffix (_1, _2, …) to avoid overwriting."
 
     return success, failed, errors, notice

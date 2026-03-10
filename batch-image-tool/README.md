@@ -34,7 +34,7 @@ You can run either the **web UI** or the **desktop (tkinter) UI**; choose the on
 ## Features
 
 - **Input** – Either choose an **input folder** or paste a **list of file paths** (one per line). List mode accepts paths with quotes and trailing punctuation (e.g. from export tools); the app strips them and uses paths that exist and have an image extension.
-- **Output** – Choose **Single folder** (one path; empty = `batch_output` inside the input folder in folder mode) or **Same folder as each source**. With “Same folder as each source”, each file is written next to its input; if a name would overwrite or conflict, a suffix (_1, _2, …) is added automatically (no prompts). When the output format differs from the input (e.g. padded PNG from a JPG), the extension change avoids conflicts.
+- **Output** – Choose **Single folder** (one path; empty = `batch_output` inside the input folder in folder mode), **Single output filename** (one folder + one base name; every image is saved with that name and the correct extension; if multiple files go to the same folder, suffixes _1, _2, … are added automatically), or **Same folder as each source**. With “Same folder as each source”, each file is written next to its input; if a name would overwrite or conflict, a suffix (_1, _2, …) is added automatically (no prompts). When the output format differs from the input (e.g. padded PNG from a JPG), the extension change avoids conflicts.
 - **Resize**
   - **Exact size** – Set width × height in pixels (e.g. 800 × 600).
   - **Max width / max height** – Resize so the image fits within these limits while keeping aspect ratio (optional).

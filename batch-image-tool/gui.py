@@ -45,6 +45,7 @@ def run_tk():
     input_folder = tk.StringVar()
     output_mode = tk.StringVar(value="single")
     output_folder = tk.StringVar()
+    output_stem = tk.StringVar()
     resize_w = tk.StringVar(value="")
     resize_h = tk.StringVar(value="")
     max_w = tk.StringVar(value="")
@@ -101,44 +102,49 @@ def run_tk():
     out_mode_f = ttk.Frame(main)
     out_mode_f.grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
     ttk.Radiobutton(out_mode_f, text="Single folder", variable=output_mode, value="single").pack(side=tk.LEFT, padx=(0, 12))
-    ttk.Radiobutton(out_mode_f, text="Same folder as each source", variable=output_mode, value="same_as_source").pack(side=tk.LEFT)
+    ttk.Radiobutton(out_mode_f, text="Single output filename", variable=output_mode, value="single_stem").pack(side=tk.LEFT, padx=(0, 12))
+    ttk.Radiobutton(out_mode_f, text="Same as each source", variable=output_mode, value="same_as_source").pack(side=tk.LEFT)
     row2 = ttk.Frame(main)
-    row2.grid(row=6, column=0, columnspan=2, sticky=tk.EW, pady=(0, 12))
+    row2.grid(row=6, column=0, columnspan=2, sticky=tk.EW, pady=(0, 4))
     ttk.Label(row2, text="Output folder").pack(anchor=tk.W)
     out_row = ttk.Frame(row2)
     out_row.pack(fill=tk.X, pady=(2, 0))
     ttk.Entry(out_row, textvariable=output_folder, width=50).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
     ttk.Button(out_row, text="Browse…", command=lambda: output_folder.set(filedialog.askdirectory() or output_folder.get())).pack(side=tk.RIGHT)
+    out_stem_f = ttk.Frame(main)
+    out_stem_f.grid(row=7, column=0, columnspan=2, sticky=tk.EW, pady=(0, 12))
+    ttk.Label(out_stem_f, text="Output filename (no extension; for “Single output filename” only)").pack(anchor=tk.W)
+    ttk.Entry(out_stem_f, textvariable=output_stem, width=40).pack(fill=tk.X, pady=(2, 0))
 
     # --- Resize ---
-    ttk.Separator(main, orient=tk.HORIZONTAL).grid(row=7, column=0, columnspan=2, sticky=tk.EW, pady=8)
-    ttk.Label(main, text="Resize (optional):").grid(row=8, column=0, sticky=tk.W, pady=(0, 4))
+    ttk.Separator(main, orient=tk.HORIZONTAL).grid(row=8, column=0, columnspan=2, sticky=tk.EW, pady=8)
+    ttk.Label(main, text="Resize (optional):").grid(row=9, column=0, sticky=tk.W, pady=(0, 4))
     resize_f = ttk.Frame(main)
-    resize_f.grid(row=9, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
+    resize_f.grid(row=10, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
     ttk.Entry(resize_f, textvariable=resize_w, width=6).pack(side=tk.LEFT)
     ttk.Label(resize_f, text="×").pack(side=tk.LEFT, padx=2)
     ttk.Entry(resize_f, textvariable=resize_h, width=6).pack(side=tk.LEFT)
     ttk.Label(resize_f, text="px (exact size). Or max width/height below (keep aspect):").pack(side=tk.LEFT, padx=(8, 0))
 
     max_f = ttk.Frame(main)
-    max_f.grid(row=10, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
+    max_f.grid(row=11, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
     ttk.Entry(max_f, textvariable=max_w, width=6).pack(side=tk.LEFT)
     ttk.Label(max_f, text="max width").pack(side=tk.LEFT, padx=(0, 8))
     ttk.Entry(max_f, textvariable=max_h, width=6).pack(side=tk.LEFT, padx=(8, 0))
     ttk.Label(max_f, text="max height (px)").pack(side=tk.LEFT, padx=(0, 8))
-    ttk.Checkbutton(main, text="Keep aspect ratio for max size", variable=keep_aspect).grid(row=11, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
+    ttk.Checkbutton(main, text="Keep aspect ratio for max size", variable=keep_aspect).grid(row=12, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
 
     # --- Pad ---
-    ttk.Label(main, text="Pad to target size (transparent PNG, optional):").grid(row=12, column=0, sticky=tk.W, pady=(0, 4))
+    ttk.Label(main, text="Pad to target size (transparent PNG, optional):").grid(row=13, column=0, sticky=tk.W, pady=(0, 4))
     pad_f = ttk.Frame(main)
-    pad_f.grid(row=13, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
+    pad_f.grid(row=14, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
     ttk.Entry(pad_f, textvariable=pad_w, width=6).pack(side=tk.LEFT)
     ttk.Label(pad_f, text="×").pack(side=tk.LEFT, padx=2)
     ttk.Entry(pad_f, textvariable=pad_h, width=6).pack(side=tk.LEFT)
     ttk.Label(pad_f, text="px").pack(side=tk.LEFT, padx=(6, 0))
 
     pad_ratio_f = ttk.Frame(main)
-    pad_ratio_f.grid(row=14, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
+    pad_ratio_f.grid(row=15, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
     ttk.Label(pad_ratio_f, text="Preset").pack(side=tk.LEFT)
     _base_dir = Path(__file__).resolve().parent
     _presets = load_presets(_base_dir)
@@ -179,11 +185,11 @@ def run_tk():
     ttk.Checkbutton(main, text="Convert to grayscale", variable=grayscale).grid(row=25, column=0, sticky=tk.W, pady=(2, 8))
 
     # --- Log & Run ---
-    ttk.Separator(main, orient=tk.HORIZONTAL).grid(row=26, column=0, columnspan=2, sticky=tk.EW, pady=(12, 8))
-    ttk.Label(main, text="Log:").grid(row=27, column=0, sticky=tk.W, pady=(0, 2))
+    ttk.Separator(main, orient=tk.HORIZONTAL).grid(row=27, column=0, columnspan=2, sticky=tk.EW, pady=(12, 8))
+    ttk.Label(main, text="Log:").grid(row=28, column=0, sticky=tk.W, pady=(0, 2))
     log = scrolledtext.ScrolledText(main, height=6, width=58, state=tk.DISABLED, wrap=tk.WORD)
-    log.grid(row=28, column=0, columnspan=2, sticky=tk.NSEW, pady=(0, 8))
-    main.rowconfigure(28, weight=1)
+    log.grid(row=29, column=0, columnspan=2, sticky=tk.NSEW, pady=(0, 8))
+    main.rowconfigure(29, weight=1)
 
     def _on_mousewheel(event):
         w = event.widget
@@ -205,6 +211,10 @@ def run_tk():
         out = output_folder.get().strip()
         paths = None
         inp = None
+        stem_override = (output_stem.get() or "").strip() or None
+        if out_mode == "single_stem" and (not out or not stem_override):
+            messagebox.showerror("Error", "Output folder and output filename are required for “Single output filename”.")
+            return
         if mode == "file_list":
             text = file_list_text.get("1.0", tk.END).strip()
             if not text:
@@ -214,7 +224,7 @@ def run_tk():
             if not paths:
                 messagebox.showerror("Error", "No valid image paths found. Check that paths exist and have an image extension.")
                 return
-            if not output_to_source and not out:
+            if not output_to_source and out_mode != "single_stem" and not out:
                 messagebox.showerror("Error", "Output folder is required when using a single output folder.")
                 return
         else:
@@ -222,7 +232,7 @@ def run_tk():
             if not inp or not Path(inp).is_dir():
                 messagebox.showerror("Error", "Please select a valid input folder.")
                 return
-            if not output_to_source and not out:
+            if not output_to_source and out_mode != "single_stem" and not out:
                 out = os.path.join(inp, "batch_output")
         if not output_to_source:
             os.makedirs(out, exist_ok=True)
@@ -276,6 +286,7 @@ def run_tk():
                         output_folder=out if not output_to_source else None,
                         input_files=paths,
                         output_to_source=output_to_source,
+                        output_stem=stem_override if out_mode == "single_stem" else None,
                         resize=resize_tuple,
                         max_width=mw,
                         max_height=mh,
@@ -297,6 +308,7 @@ def run_tk():
                         inp,
                         out if not output_to_source else None,
                         output_to_source=output_to_source,
+                        output_stem=stem_override if out_mode == "single_stem" else None,
                         resize=resize_tuple,
                     max_width=mw,
                     max_height=mh,
@@ -329,7 +341,7 @@ def run_tk():
 
         threading.Thread(target=do_work, daemon=True).start()
 
-    ttk.Button(main, text="Run batch", command=run_batch).grid(row=29, column=0, columnspan=2, pady=(8, 12))
+    ttk.Button(main, text="Run batch", command=run_batch).grid(row=30, column=0, columnspan=2, pady=(8, 12))
 
     root.mainloop()
 
