@@ -147,12 +147,15 @@ HTML = r"""
     <label>JPEG quality (1–100)</label>
     <input type="number" name="quality" min="1" max="100" value="{{ quality or 90 }}">
 
-    <label>Rotate (degrees)</label>
-    <input type="number" name="rotate" min="0" max="360" value="{{ rotate or 0 }}">
-
     <div style="margin-top: 12px;">
       <label class="inline"><input type="checkbox" name="flip_h" {{ 'checked' if flip_h else '' }}> Flip horizontal</label>
       <label class="inline"><input type="checkbox" name="flip_v" {{ 'checked' if flip_v else '' }}> Flip vertical</label>
+    </div>
+
+    <label>Rotate (degrees, clockwise)</label>
+    <input type="number" name="rotate" min="0" max="360" value="{{ rotate or 0 }}">
+
+    <div style="margin-top: 12px;">
       <label class="inline"><input type="checkbox" name="grayscale" {{ 'checked' if grayscale else '' }}> Grayscale</label>
     </div>
 

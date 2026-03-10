@@ -181,10 +181,10 @@ def run_tk():
     ttk.Spinbox(main, textvariable=quality, from_=1, to=100, width=6).grid(row=21, column=0, sticky=tk.W, pady=(0, 8))
 
     # --- Transform ---
-    ttk.Label(main, text="Rotate (degrees):").grid(row=22, column=0, sticky=tk.W, pady=(0, 2))
-    ttk.Spinbox(main, textvariable=rotate, from_=0, to=360, width=6).grid(row=23, column=0, sticky=tk.W, pady=(0, 4))
-    ttk.Checkbutton(main, text="Flip horizontal", variable=flip_h).grid(row=24, column=0, sticky=tk.W, pady=2)
-    ttk.Checkbutton(main, text="Flip vertical", variable=flip_v).grid(row=25, column=0, sticky=tk.W, pady=2)
+    ttk.Checkbutton(main, text="Flip horizontal", variable=flip_h).grid(row=22, column=0, sticky=tk.W, pady=2)
+    ttk.Checkbutton(main, text="Flip vertical", variable=flip_v).grid(row=23, column=0, sticky=tk.W, pady=2)
+    ttk.Label(main, text="Rotate (degrees, clockwise):").grid(row=24, column=0, sticky=tk.W, pady=(4, 2))
+    ttk.Spinbox(main, textvariable=rotate, from_=0, to=360, width=6).grid(row=25, column=0, sticky=tk.W, pady=(0, 4))
     ttk.Checkbutton(main, text="Convert to grayscale", variable=grayscale).grid(row=26, column=0, sticky=tk.W, pady=(2, 8))
 
     # --- Log & Run ---
