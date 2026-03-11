@@ -373,7 +373,7 @@ INDEX_TEMPLATE = """
             </div>
             <div class="weight-item">
               <label for="cost_span_tight">Chord span too tight (cost)</label>
-              <input type="number" id="cost_span_tight" name="cost_span_tight" step="0.1" min="0" placeholder="0.75" value="{{ weights_form.get('cost_span_tight', '') }}">
+              <input type="number" id="cost_span_tight" name="cost_span_tight" step="0.1" min="0" placeholder="1" value="{{ weights_form.get('cost_span_tight', '') }}">
             </div>
             <div class="weight-item">
               <label for="cost_span_wide">Chord span too wide (cost)</label>

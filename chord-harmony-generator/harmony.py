@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from typing import List, Tuple, Sequence, Dict, Optional
 
 # Chord-tone roles for omission priority (when voices < chord tones).
-# Inclusion order: root, 3rd, 7th, 9th, 5th, 6th, 11th, 13th → 5th omitted first (e.g. G9 in 4 voices).
+# Inclusion order: root, 3rd, 7th, 9th, 6th, 13th, 11th, 5th → 5th is always first to omit (e.g. G13 keeps 13th, F6/9 omits 5th).
 ROOT, THIRD, FIFTH, SEVENTH, NINTH, ELEVENTH, THIRTEENTH, SIXTH = 0, 1, 2, 3, 4, 5, 6, 7
-INCLUSION_ORDER = (ROOT, THIRD, SEVENTH, NINTH, FIFTH, SIXTH, ELEVENTH, THIRTEENTH)
+INCLUSION_ORDER = (ROOT, THIRD, SEVENTH, NINTH, SIXTH, THIRTEENTH, ELEVENTH, FIFTH)
 
 
 PITCH_CLASS_MAP: Dict[str, int] = {
@@ -60,7 +60,7 @@ class HarmonyWeights:
     cost_wide_gap_per: float = 0.1    # per semitone above octave
     spacing_octave: int = 12
     # Chord span (internal): "span" = distance in semitones from lowest to highest note in the chord
-    cost_span_tight: float = 0.75     # penalty when span < span_tight_threshold
+    cost_span_tight: float = 1.0      # penalty when span < span_tight_threshold
     cost_span_wide: float = 1.0      # penalty when span > span_wide_threshold
     span_tight_threshold: int = 8     # below this many semitones, chord is "too tight"
     span_wide_threshold: int = 24     # above this many semitones, chord is "too wide"
@@ -158,12 +158,20 @@ def parse_chord_symbol(symbol: str) -> Chord:
     if not s:
         raise ValueError("Empty chord symbol")
 
-    # Handle inversions / slash chords, e.g. C/E, Am/G
+    # Handle inversions / slash chords, e.g. C/E, Am/G.
+    # Important: patterns like "F6/9" are NOT slash chords; "/9" is part of the quality,
+    # so only treat "/" as a bass separator when the part after "/" starts with a pitch letter.
     bass_pc: Optional[int] = None
     if "/" in s:
         main, bass = s.split("/", 1)
-        s_main = main.strip()
-        s_bass = bass.strip()
+        tentative_bass = bass.strip()
+        if tentative_bass and tentative_bass[0].upper() in "ABCDEFG":
+            s_main = main.strip()
+            s_bass = tentative_bass
+        else:
+            # e.g. "F6/9" → keep entire symbol as main quality, no explicit bass
+            s_main = s
+            s_bass = ""
     else:
         s_main = s
         s_bass = ""
@@ -174,7 +182,8 @@ def parse_chord_symbol(symbol: str) -> Chord:
         bass_root = s_bass[0].upper()
         bass_rest = s_bass[1:]
         if bass_rest and bass_rest[0] in ("b", "#"):
-            bass_root += bass_rest[0].upper()
+            # Keep accidental case as in map keys (e.g. "Ab", "Db")
+            bass_root += bass_rest[0]
         if bass_root not in PITCH_CLASS_MAP:
             raise ValueError(f"Unknown bass in chord symbol: {symbol}")
         bass_pc = PITCH_CLASS_MAP[bass_root]
@@ -183,7 +192,8 @@ def parse_chord_symbol(symbol: str) -> Chord:
     root = s_main[0].upper()
     rest = s_main[1:]
     if rest and rest[0] in ("b", "#"):
-        root += rest[0].upper()
+        # Keep accidental case as in map keys (e.g. "Ab", "Db")
+        root += rest[0]
         rest = rest[1:]
 
     if root not in PITCH_CLASS_MAP:
@@ -225,6 +235,12 @@ def _build_chord_structure(root_pc: int, quality: str) -> List[Tuple[int, int]]:
         return [(pc_of(0), ROOT), (pc_of(3), THIRD), (pc_of(6), FIFTH), (pc_of(9), SEVENTH)]
     elif q_lower.startswith(("dim", "o")):
         out = [(pc_of(0), ROOT), (pc_of(3), THIRD), (pc_of(6), FIFTH)]
+    # Minor–major 7th chords (e.g. CmM7, CminMaj7): minor triad, major 7th added below.
+    # Use q (original) so "M7" (major 7th) is not misread as minor when lowercased to "m7".
+    elif q.startswith(("m", "min", "mi", "-")) and (
+        "maj7" in q_lower or "M7" in q
+    ):
+        out = [(pc_of(0), ROOT), (pc_of(3), THIRD), (pc_of(fifth), FIFTH)]
     elif q_lower.startswith(("m", "min", "mi", "-")) and "maj" not in q_lower and "M7" not in q:
         out = [(pc_of(0), ROOT), (pc_of(3), THIRD), (pc_of(fifth), FIFTH)]
     elif q_lower.startswith(("aug", "+")):
@@ -242,11 +258,15 @@ def _build_chord_structure(root_pc: int, quality: str) -> List[Tuple[int, int]]:
     # 7th (check "M7" in original quality so GM7 is not parsed as Gm7)
     if any(x in q_lower for x in ("maj7", "Δ7", "Δ")) or "M7" in q:
         out.append((pc_of(11), SEVENTH))
-    elif any(x in q_lower for x in ("7", "9", "11", "13")):
+    # For dominant / extended chords (7, 9, 11, 13) add minor 7th,
+    # but DO NOT add a 7th to 6/9 chords, which are triad + 6 + 9.
+    elif not ("6/9" in q_lower or "69" in q_lower) and any(
+        x in q_lower for x in ("7", "9", "11", "13")
+    ):
         out.append((pc_of(10), SEVENTH))
 
-    # Extensions
-    if "9" in q_lower:
+    # Extensions (natural 9 only when not altered; b9/#9 handled below)
+    if "9" in q_lower and "b9" not in q_lower and "#9" not in q_lower:
         out.append((pc_of(14), NINTH))
     if "11" in q_lower:
         out.append((pc_of(17), ELEVENTH))
@@ -345,7 +365,7 @@ def generate_harmony(
 
     first_step: Dict[int, Tuple[float, Optional[int]]] = {}
     for i, voicing in enumerate(candidates_per_step[0]):
-        cost = voice_leading_cost(None, voicing, w)
+        cost = voice_leading_cost(None, voicing, w, curr_chord=first_chord)
         cost += _bass_root_preference_cost(voicing, first_chord)
         first_step[i] = (cost, None)
     paths.append(first_step)
@@ -361,7 +381,8 @@ def generate_harmony(
             for j, (prev_cost, _) in prev_states.items():
                 prev_voicing = candidates_per_step[step - 1][j]
                 c = prev_cost + voice_leading_cost(
-                    prev_voicing, curr_voicing, w, same_chord=same_as_prev
+                    prev_voicing, curr_voicing, w, same_chord=same_as_prev,
+                    curr_chord=progression[step],
                 )
                 if is_last:
                     c += _bass_root_preference_cost(curr_voicing, last_chord)
@@ -433,11 +454,18 @@ def get_chord_alternatives(
     candidates = generate_voicings_for_chord(
         chord, num_voices, low, high, base_octave=4, max_spread=w.max_spread
     )
+    is_first = chord_index == 0
+    is_last = chord_index == len(progression) - 1
     scored: List[Tuple[Tuple[int, ...], float]] = []
     for c in candidates:
-        cost = voice_leading_cost(prev, c, w, same_chord=same_as_prev)
+        cost = voice_leading_cost(prev, c, w, same_chord=same_as_prev, curr_chord=chord)
         if next_v is not None:
-            cost += voice_leading_cost(c, next_v, w, same_chord=same_as_next)
+            cost += voice_leading_cost(
+                c, next_v, w, same_chord=same_as_next,
+                curr_chord=progression[chord_index + 1],
+            )
+        if is_first or is_last:
+            cost += _bass_root_preference_cost(c, chord)
         scored.append((c, cost))
     scored.sort(key=lambda x: x[1])
     return scored[:top_n]
@@ -624,17 +652,24 @@ def voice_leading_cost(
     curr: Tuple[int, ...],
     weights: Optional[HarmonyWeights] = None,
     same_chord: bool = False,
+    curr_chord: Optional[Chord] = None,
 ) -> float:
     """
     Cost for a single chord-to-chord transition (basic harmony/counterpoint rules).
     Voicing tuples are ordered lowest to highest (bass = index 0, soprano = index -1).
     same_chord: when True, identical adjacent chords — static voice gets no penalty.
+    curr_chord: when provided, used to penalize bass = chord's major 7th (e.g. 3rd inversion maj7).
     """
     w = weights or default_weights()
-    if prev is None:
-        return chord_internal_cost(curr, w)
-
     cost = 0.0
+    # Strong penalty when chord has a major 7th and the bass is that 7th (root in bass preferred)
+    if curr_chord is not None and len(curr) > 0:
+        major_7th_pc = (curr_chord.root_pc + 11) % 12
+        if major_7th_pc in curr_chord.pitches and (curr[0] % 12) == major_7th_pc:
+            cost += 6.0
+    if prev is None:
+        return cost + chord_internal_cost(curr, w)
+
     n = len(prev)
 
     for p, c in zip(prev, curr):
@@ -682,6 +717,9 @@ def voice_leading_cost(
         dist = curr[i + 1] - curr[i]
         if dist > octave:
             cost += w.cost_wide_gap_base + w.cost_wide_gap_per * (dist - octave)
+        # Lowest two voices (bass and next): penalty when 1 or 2 semitones apart (muddy spacing)
+        if i == 0 and (dist == 1 or dist == 2):
+            cost += 2.0
         # Inner voices (indices 1..n-2): extra penalty if gap too wide
         if 1 <= i <= n - 2 and dist > octave:
             cost += 0.4
@@ -689,16 +727,22 @@ def voice_leading_cost(
         if dist == 11 or dist == 13:
             cost += 2.0
 
+    # Outer voices (bass and soprano): strong penalty for minor 2nd or derivatives (e.g. minor 9th)
+    if n >= 2:
+        outer_interval = (curr[-1] - curr[0]) % 12
+        if outer_interval == 1:  # minor 2nd / minor 9th / etc.
+            cost += 6.0
+
     cost += chord_internal_cost(curr, w)
     return cost
 
 
 def _bass_root_preference_cost(voicing: Tuple[int, ...], chord: Chord) -> float:
-    """Cost added when bass is not the chord root (for first/last chord preference)."""
+    """Cost added when bass is not the chord root (for first/last chord preference). Strong so root position is very likely."""
     if not voicing:
         return 0.0
     bass_pc = voicing[0] % 12
-    return 0.0 if bass_pc == chord.root_pc else 0.8
+    return 0.0 if bass_pc == chord.root_pc else 4.0
 
 
 def chord_internal_cost(
@@ -750,10 +794,12 @@ def export_to_midi(result: HarmonyResult, filename: str = "output.mid") -> None:
         part.insert(0, inst)
         parts.append(part)
 
+    # One chord per bar (4 quarter notes in 4/4)
+    quarter_length = 4.0
     for v_idx, voice in enumerate(result.voices):
         p = parts[v_idx]
         for midi_pitch in voice:
-            n = note.Note(midi_pitch, quarterLength=1.0)
+            n = note.Note(midi_pitch, quarterLength=quarter_length)
             p.append(n)
         s.append(p)
 
@@ -761,7 +807,7 @@ def export_to_midi(result: HarmonyResult, filename: str = "output.mid") -> None:
     chord_part = stream.Part(id="Chords")
     for ch in result.chords:
         c = chord.Chord([p + 60 for p in ch.pitches])  # on top of middle C
-        c.quarterLength = 1.0
+        c.quarterLength = quarter_length
         c.addLyric(ch.symbol)
         chord_part.append(c)
     s.append(chord_part)
