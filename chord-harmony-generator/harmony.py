@@ -340,21 +340,31 @@ def generate_harmony(
         candidates_per_step.append(candidates)
 
     paths: List[Dict[int, Tuple[float, Optional[int]]]] = []
+    first_chord = progression[0]
+    last_chord = progression[-1]
 
     first_step: Dict[int, Tuple[float, Optional[int]]] = {}
     for i, voicing in enumerate(candidates_per_step[0]):
-        first_step[i] = (voice_leading_cost(None, voicing, w), None)
+        cost = voice_leading_cost(None, voicing, w)
+        cost += _bass_root_preference_cost(voicing, first_chord)
+        first_step[i] = (cost, None)
     paths.append(first_step)
 
     for step in range(1, len(progression)):
         prev_states = paths[-1]
         curr_states: Dict[int, Tuple[float, Optional[int]]] = {}
+        same_as_prev = progression[step].symbol == progression[step - 1].symbol
+        is_last = step == len(progression) - 1
         for i, curr_voicing in enumerate(candidates_per_step[step]):
             best_cost = float("inf")
             best_prev: Optional[int] = None
             for j, (prev_cost, _) in prev_states.items():
                 prev_voicing = candidates_per_step[step - 1][j]
-                c = prev_cost + voice_leading_cost(prev_voicing, curr_voicing, w)
+                c = prev_cost + voice_leading_cost(
+                    prev_voicing, curr_voicing, w, same_chord=same_as_prev
+                )
+                if is_last:
+                    c += _bass_root_preference_cost(curr_voicing, last_chord)
                 if c < best_cost:
                     best_cost = c
                     best_prev = j
@@ -412,14 +422,22 @@ def get_chord_alternatives(
         else None
     )
     chord = progression[chord_index]
+    same_as_prev = (
+        chord_index > 0
+        and progression[chord_index].symbol == progression[chord_index - 1].symbol
+    )
+    same_as_next = (
+        chord_index + 1 < len(progression)
+        and progression[chord_index].symbol == progression[chord_index + 1].symbol
+    )
     candidates = generate_voicings_for_chord(
         chord, num_voices, low, high, base_octave=4, max_spread=w.max_spread
     )
     scored: List[Tuple[Tuple[int, ...], float]] = []
     for c in candidates:
-        cost = voice_leading_cost(prev, c, w)
+        cost = voice_leading_cost(prev, c, w, same_chord=same_as_prev)
         if next_v is not None:
-            cost += voice_leading_cost(c, next_v, w)
+            cost += voice_leading_cost(c, next_v, w, same_chord=same_as_next)
         scored.append((c, cost))
     scored.sort(key=lambda x: x[1])
     return scored[:top_n]
@@ -605,10 +623,12 @@ def voice_leading_cost(
     prev: Optional[Tuple[int, ...]],
     curr: Tuple[int, ...],
     weights: Optional[HarmonyWeights] = None,
+    same_chord: bool = False,
 ) -> float:
     """
     Cost for a single chord-to-chord transition (basic harmony/counterpoint rules).
     Voicing tuples are ordered lowest to highest (bass = index 0, soprano = index -1).
+    same_chord: when True, identical adjacent chords — static voice gets no penalty.
     """
     w = weights or default_weights()
     if prev is None:
@@ -620,7 +640,8 @@ def voice_leading_cost(
     for p, c in zip(prev, curr):
         step = abs(c - p)
         if step == 0:
-            cost += w.cost_static
+            if not same_chord:
+                cost += w.cost_static
         elif step == 1 or step == 2:
             cost += w.cost_stepwise
         elif step <= 5:
@@ -661,9 +682,23 @@ def voice_leading_cost(
         dist = curr[i + 1] - curr[i]
         if dist > octave:
             cost += w.cost_wide_gap_base + w.cost_wide_gap_per * (dist - octave)
+        # Inner voices (indices 1..n-2): extra penalty if gap too wide
+        if 1 <= i <= n - 2 and dist > octave:
+            cost += 0.4
+        # Adjacent voices: avoid major 7th (11 semitones) and minor 9th (13 semitones)
+        if dist == 11 or dist == 13:
+            cost += 2.0
 
     cost += chord_internal_cost(curr, w)
     return cost
+
+
+def _bass_root_preference_cost(voicing: Tuple[int, ...], chord: Chord) -> float:
+    """Cost added when bass is not the chord root (for first/last chord preference)."""
+    if not voicing:
+        return 0.0
+    bass_pc = voicing[0] % 12
+    return 0.0 if bass_pc == chord.root_pc else 0.8
 
 
 def chord_internal_cost(

@@ -10,6 +10,7 @@ from harmony import (
     default_weights,
     weights_from_form,
     get_chord_alternatives,
+    midi_to_name,
 )
 
 app = Flask(__name__)
@@ -457,7 +458,7 @@ INDEX_TEMPLATE = """
                         <ul class="whatif-list">
                           {% for alt in alternatives_per_chord[step] %}
                             <li class="whatif-item {{ 'current' if alt.is_current else '' }}">
-                              <span class="whatif-notes">{{ alt.midi_str }}</span>
+                              <span class="whatif-notes" title="MIDI: {{ alt.midi_str }}">{{ alt.note_names }}</span>
                               <span class="whatif-cost">cost {{ alt.cost }}</span>
                               {% if not alt.is_current %}
                                 <button type="button" class="whatif-use-btn" data-chord-index="{{ step }}" data-voicing="{{ alt.midi_json }}">Use this</button>
@@ -686,6 +687,7 @@ def index():
                                         "midi": midi_list,
                                         "midi_json": json.dumps(midi_list),
                                         "midi_str": ", ".join(str(m) for m in midi_list),
+                                        "note_names": ", ".join(midi_to_name(m) for m in midi_list),
                                         "cost": round(cost, 2),
                                         "is_current": voicing == current,
                                     }
