@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from flask import Flask, request, redirect, url_for, render_template_string, send_file
 
 from harmony import (
@@ -8,6 +9,7 @@ from harmony import (
     export_to_midi,
     default_weights,
     weights_from_form,
+    get_chord_alternatives,
 )
 
 app = Flask(__name__)
@@ -237,6 +239,55 @@ INDEX_TEMPLATE = """
         padding: 0.4rem 0.5rem;
         font-size: 0.9rem;
       }
+      .lock-whatif-row td {
+        vertical-align: top;
+        padding: 0.5rem;
+        font-size: 0.8rem;
+      }
+      .lock-whatif-label {
+        color: #9ca3af;
+        font-weight: 600;
+      }
+      .lock-label {
+        display: block;
+        margin-bottom: 0.35rem;
+        cursor: pointer;
+      }
+      .lock-label input { margin-right: 0.25rem; }
+      .whatif-details summary {
+        cursor: pointer;
+        color: #a5b4fc;
+      }
+      .whatif-list {
+        list-style: none;
+        padding: 0;
+        margin: 0.35rem 0 0 0;
+        max-height: 12rem;
+        overflow-y: auto;
+      }
+      .whatif-item {
+        padding: 0.25rem 0;
+        border-bottom: 1px solid #1f2937;
+        font-size: 0.75rem;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.25rem;
+      }
+      .whatif-item.current { color: #9ca3af; }
+      .whatif-notes { font-family: ui-monospace, monospace; color: #e5e7eb; }
+      .whatif-cost { color: #6b7280; }
+      .whatif-use-btn {
+        background: #374151;
+        color: #e5e7eb;
+        border: 1px solid #4b5563;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        font-size: 0.7rem;
+      }
+      .whatif-use-btn:hover { background: #4b5563; }
+      .whatif-current-badge { color: #4ade80; font-size: 0.7rem; }
       @media (max-width: 640px) {
         .container {
           margin: 1.5rem;
@@ -256,7 +307,7 @@ INDEX_TEMPLATE = """
         <div class="error">{{ error }}</div>
       {% endif %}
 
-      <form method="post" action="{{ url_for('index') }}">
+      <form method="post" action="{{ url_for('index') }}" id="harmony-form">
         <div class="field-group">
           <label for="voices">Number of voices</label>
           <input type="number" id="voices" name="voices" min="4" max="6" value="{{ voices or 4 }}">
@@ -348,9 +399,9 @@ INDEX_TEMPLATE = """
           </button>
           <span class="pill"><strong>Tip</strong> Harmony is recomputed instantly as you tweak chords.</span>
         </div>
-      </form>
 
       {% if result %}
+        <input type="hidden" name="locked_voicings" id="locked_voicings_input" value="{{ locked_voicings_json }}">
         <div class="results">
           <h2>Result</h2>
           <div class="field-group">
@@ -380,6 +431,33 @@ INDEX_TEMPLATE = """
                     {% endfor %}
                   </tr>
                 {% endfor %}
+                <tr class="lock-whatif-row">
+                  <td class="lock-whatif-label">Lock / What if</td>
+                  {% for step in range(result_step_count) %}
+                    <td class="lock-whatif-cell">
+                      <label class="lock-label" title="Lock this voicing for re-optimize">
+                        <input type="checkbox" class="lock-cb" data-chord-index="{{ step }}" data-voicing="{{ chord_voicings_json_list[step] }}" {% if step in locked_chord_indices %}checked{% endif %}>
+                        Lock
+                      </label>
+                      <details class="whatif-details">
+                        <summary>What if</summary>
+                        <ul class="whatif-list">
+                          {% for alt in alternatives_per_chord[step] %}
+                            <li class="whatif-item {{ 'current' if alt.is_current else '' }}">
+                              <span class="whatif-notes">{{ alt.midi_str }}</span>
+                              <span class="whatif-cost">cost {{ alt.cost }}</span>
+                              {% if not alt.is_current %}
+                                <button type="button" class="whatif-use-btn" data-chord-index="{{ step }}" data-voicing="{{ alt.midi_json }}">Use this</button>
+                              {% else %}
+                                <span class="whatif-current-badge">current</span>
+                              {% endif %}
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      </details>
+                    </td>
+                  {% endfor %}
+                </tr>
               </tbody>
             </table>
           </div>
@@ -410,6 +488,48 @@ INDEX_TEMPLATE = """
             {% endif %}
           </div>
         </div>
+      {% endif %}
+      </form>
+
+      {% if result %}
+      <script>
+        (function() {
+          var form = document.getElementById("harmony-form");
+          var lockedInput = document.getElementById("locked_voicings_input");
+          if (!form || !lockedInput) return;
+          function getLocked() {
+            try { return JSON.parse(lockedInput.value || "{}"); } catch (e) { return {}; }
+          }
+          function setLocked(obj) {
+            lockedInput.value = JSON.stringify(obj);
+          }
+          form.querySelectorAll(".lock-cb").forEach(function(cb) {
+            cb.addEventListener("change", function() {
+              var locked = getLocked();
+              var idx = this.getAttribute("data-chord-index");
+              var voicing = this.getAttribute("data-voicing");
+              if (this.checked && voicing) {
+                try { locked[idx] = JSON.parse(voicing); } catch (e) {}
+              } else {
+                delete locked[idx];
+              }
+              setLocked(locked);
+            });
+          });
+          form.querySelectorAll(".whatif-use-btn").forEach(function(btn) {
+            btn.addEventListener("click", function() {
+              var locked = getLocked();
+              var idx = this.getAttribute("data-chord-index");
+              var voicing = this.getAttribute("data-voicing");
+              if (idx != null && voicing) {
+                try { locked[idx] = JSON.parse(voicing); } catch (e) {}
+                setLocked(locked);
+                form.submit();
+              }
+            });
+          });
+        })();
+      </script>
       {% endif %}
     </div>
   </body>
@@ -442,6 +562,33 @@ def _weights_to_form(w) -> dict:
     }
 
 
+def _parse_locked_voicings(form_value: str) -> tuple[dict, dict]:
+    """
+    Parse locked_voicings from form (JSON with string keys). Returns
+    (locked_for_backend: dict int->list, locked_for_form: dict str->list for re-submit).
+    """
+    if not form_value or not form_value.strip():
+        return {}, {}
+    try:
+        raw = json.loads(form_value)
+    except (json.JSONDecodeError, TypeError):
+        return {}, {}
+    if not isinstance(raw, dict):
+        return {}, {}
+    locked_backend = {}
+    locked_form = {}
+    for k, v in raw.items():
+        try:
+            idx = int(k)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(v, list) or not all(isinstance(x, int) for x in v):
+            continue
+        locked_backend[idx] = v
+        locked_form[k] = v
+    return locked_backend, locked_form
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     error = None
@@ -451,12 +598,22 @@ def index():
     progression_text = ""
     midi_available = False
     weights_form = _weights_to_form(default_weights())
+    chord_voicings = []
+    chord_voicings_json_list = []
+    alternatives_per_chord = []
+    locked_voicings_json = "{}"
+    locked_chord_indices = set()
 
     if request.method == "POST":
         progression_text = request.form.get("progression", "").strip()
         voices_raw = request.form.get("voices", "").strip() or "4"
         weights = weights_from_form(request.form)
         weights_form = _weights_to_form(weights)
+        locked_backend, locked_form = _parse_locked_voicings(
+            request.form.get("locked_voicings", "") or ""
+        )
+        locked_voicings_json = json.dumps(locked_form) if locked_form else "{}"
+        locked_chord_indices = set(int(k) for k in locked_form) if locked_form else set()
 
         try:
             voices = int(voices_raw)
@@ -475,7 +632,10 @@ def index():
                 else:
                     try:
                         result = generate_harmony(
-                            chords, num_voices=voices, weights=weights
+                            chords,
+                            num_voices=voices,
+                            weights=weights,
+                            locked_voicings=locked_backend if locked_backend else None,
                         )
                     except Exception as e:  # pragma: no cover - defensive
                         error = f"Error generating harmony: {e}"
@@ -489,6 +649,39 @@ def index():
                         except Exception:
                             midi_available = False
 
+                        n = len(result.voices)
+                        num_chords = len(result.chords)
+                        path_voicings = [
+                            tuple(
+                                result.voices[n - 1 - v][t]
+                                for v in range(n)
+                            )
+                            for t in range(num_chords)
+                        ]
+                        chord_voicings = [list(p) for p in path_voicings]
+                        alternatives_per_chord = []
+                        for k in range(num_chords):
+                            alts = get_chord_alternatives(
+                                chords, voices, weights, path_voicings, k
+                            )
+                            current = path_voicings[k]
+                            options = []
+                            for voicing, cost in alts:
+                                midi_list = list(voicing)
+                                options.append(
+                                    {
+                                        "midi": midi_list,
+                                        "midi_json": json.dumps(midi_list),
+                                        "midi_str": ", ".join(str(m) for m in midi_list),
+                                        "cost": round(cost, 2),
+                                        "is_current": voicing == current,
+                                    }
+                                )
+                            alternatives_per_chord.append(options)
+                        chord_voicings_json_list = [
+                            json.dumps(cv) for cv in chord_voicings
+                        ]
+
     return render_template_string(
         INDEX_TEMPLATE,
         error=error,
@@ -499,6 +692,11 @@ def index():
         progression=progression_text,
         midi_available=midi_available,
         weights_form=weights_form,
+        chord_voicings=chord_voicings,
+        chord_voicings_json_list=chord_voicings_json_list,
+        alternatives_per_chord=alternatives_per_chord,
+        locked_voicings_json=locked_voicings_json,
+        locked_chord_indices=locked_chord_indices,
         enumerate=enumerate,
         range=range,
     )

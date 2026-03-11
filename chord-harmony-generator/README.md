@@ -89,6 +89,13 @@ You will see:
   - each voice (highest to lowest) as note names in a table
 - If `music21` is available, a **Download MIDI** link for `output.mid`.
 
+### Lock and What-if (voicing control)
+
+After generating, each chord column has:
+
+- **Lock** – Check to keep that chord’s current voicing fixed. Click **Generate** again to re-optimize the rest of the progression around the locked chord(s). Useful when you’ve decided one or more chords and want the rest filled in.
+- **What if** – Expand to see other good voicings for that chord (scored by local voice-leading cost). Click **Use this** on an alternative to lock that voicing for that chord and re-run the optimizer in one step.
+
 ## Chord notation
 
 **Roots** (case-insensitive, with sharps/flats):

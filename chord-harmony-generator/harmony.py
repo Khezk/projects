@@ -305,7 +305,12 @@ def generate_harmony(
     num_voices: int = 4,
     base_octave: int = 4,
     weights: Optional[HarmonyWeights] = None,
+    locked_voicings: Optional[Dict[int, Sequence[int]]] = None,
 ) -> HarmonyResult:
+    """
+    locked_voicings: optional dict chord_index -> voicing (list/tuple of MIDI, lowest to highest).
+    Locked chords use that single voicing; others are optimized.
+    """
     if num_voices < 4:
         raise ValueError("At least 4 voices are required.")
     if num_voices > 6:
@@ -316,8 +321,17 @@ def generate_harmony(
     low = w.range_low if w.range_low is not None else pr[0]
     high = w.range_high if w.range_high is not None else pr[1]
 
+    locked = locked_voicings or {}
     candidates_per_step: List[List[Tuple[int, ...]]] = []
-    for chord in progression:
+    for i, chord in enumerate(progression):
+        if i in locked:
+            raw = locked[i]
+            if len(raw) != num_voices:
+                raise ValueError(
+                    f"Locked voicing for chord {i + 1} has {len(raw)} notes; expected {num_voices}."
+                )
+            candidates_per_step.append([tuple(sorted(raw))])
+            continue
         candidates = generate_voicings_for_chord(
             chord, num_voices, low, high, base_octave, max_spread=w.max_spread
         )
@@ -370,6 +384,45 @@ def generate_harmony(
     voices = list(reversed(voices))
 
     return HarmonyResult(chords=list(progression), voices=voices)
+
+
+def get_chord_alternatives(
+    progression: Sequence[Chord],
+    num_voices: int,
+    weights: Optional[HarmonyWeights],
+    path_voicings: List[Tuple[int, ...]],
+    chord_index: int,
+    top_n: int = 8,
+) -> List[Tuple[Tuple[int, ...], float]]:
+    """
+    Return alternative voicings for one chord, scored by local cost (prev -> cand -> next).
+    path_voicings[t] = voicing at step t (lowest to highest). Returns list of (voicing, cost) sorted by cost.
+    """
+    if chord_index < 0 or chord_index >= len(progression):
+        return []
+    w = weights or default_weights()
+    pr = VOICE_RANGES.get(num_voices, (48, 79))
+    low = w.range_low if w.range_low is not None else pr[0]
+    high = w.range_high if w.range_high is not None else pr[1]
+
+    prev = path_voicings[chord_index - 1] if chord_index > 0 else None
+    next_v = (
+        path_voicings[chord_index + 1]
+        if chord_index + 1 < len(path_voicings)
+        else None
+    )
+    chord = progression[chord_index]
+    candidates = generate_voicings_for_chord(
+        chord, num_voices, low, high, base_octave=4, max_spread=w.max_spread
+    )
+    scored: List[Tuple[Tuple[int, ...], float]] = []
+    for c in candidates:
+        cost = voice_leading_cost(prev, c, w)
+        if next_v is not None:
+            cost += voice_leading_cost(c, next_v, w)
+        scored.append((c, cost))
+    scored.sort(key=lambda x: x[1])
+    return scored[:top_n]
 
 
 def generate_voicings_for_chord(
