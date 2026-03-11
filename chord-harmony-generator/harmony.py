@@ -31,10 +31,10 @@ PITCH_CLASS_MAP: Dict[str, int] = {
 
 
 VOICE_RANGES: Dict[int, Tuple[int, int]] = {
-    # MIDI note ranges, very approximate and slightly generous
-    4: (48, 79),  # C3–G5 (typical chorale span)
-    5: (45, 81),  # A2–A5
-    6: (43, 83),  # G2–B5
+    # Default MIDI range (low, high) per voice count. More voices use a looser (wider) range.
+    4: (48, 79),   # C3–G5 (typical SATB)
+    5: (43, 83),   # G2–B5 (wider for 5 voices)
+    6: (40, 86),   # E2–D6 (wider for 6 voices)
 }
 
 
@@ -59,15 +59,15 @@ class HarmonyWeights:
     cost_wide_gap_base: float = 1.0   # adjacent voices > octave apart
     cost_wide_gap_per: float = 0.1    # per semitone above octave
     spacing_octave: int = 12
-    # Chord span (internal)
-    cost_span_tight: float = 1.0      # chord span < span_tight_threshold
-    cost_span_wide: float = 1.5      # chord span > span_wide_threshold
-    span_tight_threshold: int = 6
-    span_wide_threshold: int = 20
+    # Chord span (internal): "span" = distance in semitones from lowest to highest note in the chord
+    cost_span_tight: float = 0.75     # penalty when span < span_tight_threshold
+    cost_span_wide: float = 1.0      # penalty when span > span_wide_threshold
+    span_tight_threshold: int = 8     # below this many semitones, chord is "too tight"
+    span_wide_threshold: int = 24     # above this many semitones, chord is "too wide"
     # Voicing generator (optional overrides)
-    range_low: Optional[int] = None   # if set, override VOICE_RANGES low
-    range_high: Optional[int] = None   # if set, override VOICE_RANGES high
-    max_spread: int = 16              # max semitones between lowest and highest note in a chord
+    range_low: Optional[int] = None   # if set, override default low bound (MIDI)
+    range_high: Optional[int] = None  # if set, override default high bound (MIDI)
+    max_spread: int = 31              # max semitones between lowest and highest note in a chord
 
 
 def default_weights() -> HarmonyWeights:
@@ -225,7 +225,7 @@ def _build_chord_structure(root_pc: int, quality: str) -> List[Tuple[int, int]]:
         return [(pc_of(0), ROOT), (pc_of(3), THIRD), (pc_of(6), FIFTH), (pc_of(9), SEVENTH)]
     elif q_lower.startswith(("dim", "o")):
         out = [(pc_of(0), ROOT), (pc_of(3), THIRD), (pc_of(6), FIFTH)]
-    elif q_lower.startswith(("m", "min", "mi", "-")) and "maj" not in q_lower:
+    elif q_lower.startswith(("m", "min", "mi", "-")) and "maj" not in q_lower and "M7" not in q:
         out = [(pc_of(0), ROOT), (pc_of(3), THIRD), (pc_of(fifth), FIFTH)]
     elif q_lower.startswith(("aug", "+")):
         out = [(pc_of(0), ROOT), (pc_of(4), THIRD), (pc_of(8), FIFTH)]
@@ -239,8 +239,8 @@ def _build_chord_structure(root_pc: int, quality: str) -> List[Tuple[int, int]]:
     elif "6" in q_lower and "add6" not in q_lower:
         out.append((pc_of(9), SIXTH))
 
-    # 7th
-    if any(x in q_lower for x in ("maj7", "Δ7", "Δ", "M7")):
+    # 7th (check "M7" in original quality so GM7 is not parsed as Gm7)
+    if any(x in q_lower for x in ("maj7", "Δ7", "Δ")) or "M7" in q:
         out.append((pc_of(11), SEVENTH))
     elif any(x in q_lower for x in ("7", "9", "11", "13")):
         out.append((pc_of(10), SEVENTH))
@@ -442,7 +442,13 @@ def generate_voicings_for_chord(
     root_pc = chord.root_pc
     bass_pc = chord.bass_pc
 
-    # Build candidate chord tones from effective set only
+    # Slash chord with bass not in chord (e.g. Dm7b5/E): bass takes one slot, upper voices from chord.
+    if bass_pc is not None and bass_pc not in effective_pcs:
+        return _voicings_slash_bass_outside(
+            chord, num_voices, low, high, base_octave, max_spread, effective_pcs
+        )
+
+    # Build candidate chord tones from effective set only (bass may be in chord, e.g. Gsus/C)
     tone_midis: List[int] = []
     for octave in range(2, 7):
         for pc in effective_pcs:
@@ -451,6 +457,12 @@ def generate_voicings_for_chord(
                 tone_midis.append(m)
 
     tone_midis = sorted(set(tone_midis))
+
+    # When we have more voices than chord tones (e.g. GM7 with 6 voices), allow doubling beyond root.
+    max_root = 2
+    max_other = 2 if num_voices > len(effective_pcs) else 1
+    max_per_pc = max(2, (num_voices + len(effective_pcs) - 1) // len(effective_pcs))
+    max_other = min(max_other, max_per_pc)
 
     voicings: List[Tuple[int, ...]] = []
 
@@ -476,12 +488,9 @@ def generate_voicings_for_chord(
             if pc not in effective_pcs:
                 continue
             existing = counts.get(pc, 0)
-            if pc == root_pc:
-                if existing >= 2:
-                    continue
-            else:
-                if existing >= 1:
-                    continue
+            cap = max_root if pc == root_pc else max_other
+            if existing >= cap:
+                continue
             new_used = set(used_pcs)
             new_used.add(pc)
             new_counts = dict(counts)
@@ -495,6 +504,101 @@ def generate_voicings_for_chord(
         voicings = voicings[:500]
 
     return voicings
+
+
+def _voicings_slash_bass_outside(
+    chord: Chord,
+    num_voices: int,
+    low: int,
+    high: int,
+    base_octave: int,
+    max_spread: int,
+    effective_pcs: List[int],
+) -> List[Tuple[int, ...]]:
+    """Generate voicings when bass is not a chord tone (e.g. Dm7b5/E): one bass note + (n-1) chord tones above."""
+    assert chord.bass_pc is not None
+    bass_pc = chord.bass_pc
+    upper_count = num_voices - 1
+    if upper_count <= 0:
+        return []
+    effective_upper = _effective_chord_tones(chord, upper_count)
+    if len(effective_upper) == 0:
+        return []
+
+    voicings: List[Tuple[int, ...]] = []
+    for octave in range(2, 6):
+        bass_note = bass_pc + 12 * octave
+        if bass_note < low or bass_note > high:
+            continue
+        upper_low = bass_note + 1
+        if upper_low > high:
+            continue
+        upper_candidates = _generate_upper_voicings(
+            chord, upper_count, upper_low, high, max_spread, effective_upper
+        )
+        for u in upper_candidates:
+            if u[0] - bass_note <= max_spread:
+                voicings.append((bass_note,) + u)
+    if len(voicings) > 500:
+        voicings = voicings[:500]
+    return voicings
+
+
+def _generate_upper_voicings(
+    chord: Chord,
+    num_voices: int,
+    low: int,
+    high: int,
+    max_spread: int,
+    effective_pcs: List[int],
+) -> List[Tuple[int, ...]]:
+    """Generate (num_voices) notes from chord in [low, high], all from effective_pcs."""
+    root_pc = chord.root_pc
+    tone_midis = []
+    for octave in range(2, 7):
+        for pc in effective_pcs:
+            m = pc + 12 * octave
+            if low <= m <= high:
+                tone_midis.append(m)
+    tone_midis = sorted(set(tone_midis))
+    max_root = 2
+    max_other = 2 if num_voices > len(effective_pcs) else 1
+    max_per_pc = max(2, (num_voices + len(effective_pcs) - 1) // len(effective_pcs))
+    max_other = min(max_other, max_per_pc)
+
+    out: List[Tuple[int, ...]] = []
+
+    def backtrack(
+        current: List[int],
+        start_idx: int,
+        used_pcs: set[int],
+        counts: Dict[int, int],
+    ) -> None:
+        if len(current) == num_voices:
+            if current[-1] - current[0] <= max_spread and all(
+                pc in used_pcs for pc in effective_pcs
+            ):
+                out.append(tuple(current))
+            return
+        for i in range(start_idx, len(tone_midis)):
+            note = tone_midis[i]
+            if current and note < current[-1]:
+                continue
+            pc = note % 12
+            if pc not in effective_pcs:
+                continue
+            existing = counts.get(pc, 0)
+            cap = max_root if pc == root_pc else max_other
+            if existing >= cap:
+                continue
+            new_used = set(used_pcs)
+            new_used.add(pc)
+            new_counts = dict(counts)
+            new_counts[pc] = existing + 1
+            backtrack(current + [note], i, new_used, new_counts)
+
+    backtrack([], 0, set(), {})
+    return out
 
 
 def voice_leading_cost(

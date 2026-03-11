@@ -234,6 +234,14 @@ INDEX_TEMPLATE = """
         font-weight: 500;
         color: #9ca3af;
       }
+      .weight-item .weight-hint {
+        display: block;
+        font-size: 0.7rem;
+        color: #6b7280;
+        margin-top: 0.15rem;
+        margin-bottom: 0.2rem;
+        line-height: 1.25;
+      }
       .weight-item input {
         width: 100%;
         padding: 0.4rem 0.5rem;
@@ -363,32 +371,37 @@ INDEX_TEMPLATE = """
               <input type="number" id="bonus_contrary" name="bonus_contrary" step="0.05" min="0" placeholder="0.25" value="{{ weights_form.get('bonus_contrary', '') }}">
             </div>
             <div class="weight-item">
-              <label for="cost_span_tight">Chord span too tight</label>
-              <input type="number" id="cost_span_tight" name="cost_span_tight" step="0.1" min="0" placeholder="1" value="{{ weights_form.get('cost_span_tight', '') }}">
+              <label for="cost_span_tight">Chord span too tight (cost)</label>
+              <input type="number" id="cost_span_tight" name="cost_span_tight" step="0.1" min="0" placeholder="0.75" value="{{ weights_form.get('cost_span_tight', '') }}">
             </div>
             <div class="weight-item">
-              <label for="cost_span_wide">Chord span too wide</label>
-              <input type="number" id="cost_span_wide" name="cost_span_wide" step="0.1" min="0" placeholder="1.5" value="{{ weights_form.get('cost_span_wide', '') }}">
+              <label for="cost_span_wide">Chord span too wide (cost)</label>
+              <input type="number" id="cost_span_wide" name="cost_span_wide" step="0.1" min="0" placeholder="1" value="{{ weights_form.get('cost_span_wide', '') }}">
             </div>
             <div class="weight-item">
-              <label for="span_tight_threshold">Span tight below (semitones)</label>
-              <input type="number" id="span_tight_threshold" name="span_tight_threshold" min="0" placeholder="6" value="{{ weights_form.get('span_tight_threshold', '') }}">
+              <label for="span_tight_threshold">Span “tight” below (semitones)</label>
+              <span class="weight-hint">Penalize if chord span &lt; this (default 8)</span>
+              <input type="number" id="span_tight_threshold" name="span_tight_threshold" min="0" placeholder="8" value="{{ weights_form.get('span_tight_threshold', '') }}">
             </div>
             <div class="weight-item">
-              <label for="span_wide_threshold">Span wide above (semitones)</label>
-              <input type="number" id="span_wide_threshold" name="span_wide_threshold" min="0" placeholder="20" value="{{ weights_form.get('span_wide_threshold', '') }}">
+              <label for="span_wide_threshold">Span “wide” above (semitones)</label>
+              <span class="weight-hint">Penalize if chord span &gt; this (default 24)</span>
+              <input type="number" id="span_wide_threshold" name="span_wide_threshold" min="0" placeholder="24" value="{{ weights_form.get('span_wide_threshold', '') }}">
             </div>
             <div class="weight-item">
-              <label for="range_low">Range low (MIDI, e.g. 48)</label>
+              <label for="range_low">Range low (MIDI)</label>
+              <span class="weight-hint">Lowest note allowed. Blank = auto (wider for 5–6 voices)</span>
               <input type="number" id="range_low" name="range_low" min="24" max="127" placeholder="auto" value="{{ weights_form.get('range_low', '') }}">
             </div>
             <div class="weight-item">
-              <label for="range_high">Range high (MIDI, e.g. 79)</label>
+              <label for="range_high">Range high (MIDI)</label>
+              <span class="weight-hint">Highest note allowed. Blank = auto</span>
               <input type="number" id="range_high" name="range_high" min="24" max="127" placeholder="auto" value="{{ weights_form.get('range_high', '') }}">
             </div>
             <div class="weight-item">
               <label for="max_spread">Max chord spread (semitones)</label>
-              <input type="number" id="max_spread" name="max_spread" min="8" max="24" placeholder="16" value="{{ weights_form.get('max_spread', '') }}">
+              <span class="weight-hint">Max distance lowest→highest in one chord (default 31)</span>
+              <input type="number" id="max_spread" name="max_spread" min="8" max="48" placeholder="31" value="{{ weights_form.get('max_spread', '') }}">
             </div>
           </div>
         </details>
