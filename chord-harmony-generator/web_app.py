@@ -16,6 +16,20 @@ from harmony import (
 app = Flask(__name__)
 
 
+def _piano_roll_bounds(result):
+    """Return (pitch_min, pitch_max) for the result's full pitch range."""
+    if not result or not result.voices:
+        return 48, 72
+    all_pitches = [n for v in result.voices for n in v]
+    return min(all_pitches), max(all_pitches)
+
+
+# Register filter so template can show note names from MIDI numbers
+@app.template_filter("midi_to_name")
+def _midi_to_name_filter(midi_num):
+    return midi_to_name(int(midi_num)) if midi_num is not None else ""
+
+
 INDEX_TEMPLATE = """
 <!doctype html>
 <html lang="en">
@@ -118,6 +132,17 @@ INDEX_TEMPLATE = """
         padding-top: 1.5rem;
         border-top: 1px solid #1f2937;
       }
+      .results-scroll {
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: visible;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -0.25rem;
+        padding: 0 0.25rem;
+      }
+      .results-scroll-inner {
+        min-width: min-content;
+      }
       .chords {
         font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         background: #020617;
@@ -125,10 +150,11 @@ INDEX_TEMPLATE = """
         border-radius: 0.5rem;
         border: 1px solid #4b5563;
         font-size: 0.85rem;
-        overflow-x: auto;
+        white-space: nowrap;
       }
       table.voices {
         width: 100%;
+        min-width: min-content;
         border-collapse: collapse;
         margin-top: 1rem;
         font-size: 0.85rem;
@@ -171,47 +197,90 @@ INDEX_TEMPLATE = """
       .download a:hover {
         text-decoration: underline;
       }
-      .visualizer {
+      .piano-roll-wrap {
         margin-top: 1rem;
         border-radius: 0.75rem;
-        background: #020617;
+        background: #0f172a;
         border: 1px solid #1f2937;
-        padding: 0.75rem 0.9rem;
-      }
-      .voice-row {
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        margin-bottom: 0.35rem;
-      }
-      .voice-label {
-        font-size: 0.8rem;
-        color: #9ca3af;
-        width: 3rem;
-      }
-      .voice-track {
-        display: flex;
-        gap: 0.25rem;
-        flex-wrap: nowrap;
+        padding: 0.5rem 0.75rem;
         overflow-x: auto;
       }
-      .note-box {
-        min-width: 2.3rem;
-        text-align: center;
-        font-size: 0.78rem;
-        padding: 0.25rem 0.3rem;
+      .piano-roll {
+        display: grid;
+        gap: 1px;
+        padding: 1px;
+        background: #1f2937;
+        border: 1px solid #1f2937;
         border-radius: 0.4rem;
-        color: #020617;
-        background: #38bdf8;
-        box-shadow: 0 4px 10px -4px rgba(56, 189, 248, 0.7);
-        white-space: nowrap;
+        font-size: 0.75rem;
       }
-      .note-box.voice-1 { background: #38bdf8; }
-      .note-box.voice-2 { background: #a5b4fc; }
-      .note-box.voice-3 { background: #4ade80; }
-      .note-box.voice-4 { background: #facc15; }
-      .note-box.voice-5 { background: #fb7185; }
-      .note-box.voice-6 { background: #fdba74; }
+      .pr-y-header {
+        grid-column: 1;
+        display: flex;
+        align-items: center;
+        padding: 0 0.5rem;
+        color: #94a3b8;
+        font-weight: 600;
+        background: #0f172a;
+        border-radius: 0.25rem 0 0 0;
+      }
+      .pr-step-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #64748b;
+        font-size: 0.7rem;
+        font-weight: 600;
+        background: #0f172a;
+      }
+      .pr-y-block {
+        grid-column: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 16px;
+        height: 18px;
+        font-weight: 600;
+        white-space: nowrap;
+        border-radius: 2px;
+      }
+      .pr-y-block.natural {
+        background: #e2e8f0;
+        color: #334155;
+      }
+      .pr-y-block.sharp {
+        background: #475569;
+        color: #f1f5f9;
+      }
+      .pr-cell {
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+        gap: 2px;
+        min-height: 16px;
+        background: #0f172a;
+      }
+      .pr-note {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        min-width: 0;
+        min-height: 16px;
+        height: 18px;
+        border-radius: 2px;
+        color: #0f172a;
+        font-weight: 600;
+        white-space: nowrap;
+        font-size: 0.7rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      }
+      .pr-note.voice-1 { background: #38bdf8; }
+      .pr-note.voice-2 { background: #a5b4fc; }
+      .pr-note.voice-3 { background: #4ade80; }
+      .pr-note.voice-4 { background: #facc15; }
+      .pr-note.voice-5 { background: #fb7185; }
+      .pr-note.voice-6 { background: #fdba74; }
       .weights-section {
         margin-bottom: 1rem;
         padding: 0.75rem 1rem;
@@ -418,16 +487,18 @@ INDEX_TEMPLATE = """
         <input type="hidden" name="locked_voicings" id="locked_voicings_input" value="{{ locked_voicings_json }}">
         <div class="results">
           <h2>Result</h2>
-          <div class="field-group">
-            <label>Chords</label>
-            <div class="chords">
-              {{ result.chords | map(attribute='symbol') | join(' | ') }}
-            </div>
-          </div>
+          <div class="results-scroll">
+            <div class="results-scroll-inner">
+              <div class="field-group">
+                <label>Chords</label>
+                <div class="chords">
+                  {{ result.chords | map(attribute='symbol') | join(' | ') }}
+                </div>
+              </div>
 
-          <div class="field-group">
-            <label>Voices (highest to lowest)</label>
-            <table class="voices">
+              <div class="field-group">
+                <label>Voices (highest to lowest)</label>
+                <table class="voices">
               <thead>
                 <tr>
                   <th>Voice</th>
@@ -474,23 +545,33 @@ INDEX_TEMPLATE = """
                 </tr>
               </tbody>
             </table>
-          </div>
+              </div>
 
-          <div class="field-group">
-            <label>Visualizer</label>
-            <div class="visualizer">
-              {% for v_idx, voice_notes in enumerate(note_names_by_voice) %}
-                <div class="voice-row">
-                  <div class="voice-label">Voice {{ v_idx + 1 }}</div>
-                  <div class="voice-track">
-                    {% for note in voice_notes %}
-                      <div class="note-box voice-{{ v_idx + 1 }}" title="{{ note }}">
-                        {{ note }}
-                      </div>
+              <div class="field-group">
+                <label>Piano roll</label>
+                <div class="piano-roll-wrap">
+                  <div class="piano-roll" style="grid-template-columns: auto repeat({{ result_step_count }}, minmax(28px, 1fr)); grid-template-rows: 22px repeat({{ piano_roll_num_pitches }}, 18px);">
+                    <div class="pr-y-header" style="grid-row: 1; grid-column: 1;">Pitch</div>
+                    {% for step in range(result_step_count) %}
+                      <div class="pr-step-label" style="grid-row: 1; grid-column: {{ step + 2 }};">{{ step + 1 }}</div>
+                    {% endfor %}
+                    {% for pitch_row in range(piano_roll_num_pitches) %}
+                      {% set pitch = pitch_max - pitch_row %}
+                      {% set pc = pitch % 12 %}
+                      <div class="pr-y-block {% if pc in [0,2,4,5,7,9,11] %}natural{% else %}sharp{% endif %}" style="grid-row: {{ pitch_row + 2 }}; grid-column: 1;">{{ pitch | midi_to_name }}</div>
+                      {% for step in range(result_step_count) %}
+                        <div class="pr-cell" style="grid-row: {{ pitch_row + 2 }}; grid-column: {{ step + 2 }};">
+                          {% for v_idx in range(result_num_voices) %}
+                            {% if result.voices[v_idx][step] == pitch %}
+                          <div class="pr-note voice-{{ v_idx + 1 }}" title="Voice {{ v_idx + 1 }}, Step {{ step + 1 }}: {{ note_names_by_voice[v_idx][step] }}">{{ note_names_by_voice[v_idx][step] }}</div>
+                            {% endif %}
+                          {% endfor %}
+                        </div>
+                      {% endfor %}
                     {% endfor %}
                   </div>
                 </div>
-              {% endfor %}
+              </div>
             </div>
           </div>
 
@@ -697,12 +778,20 @@ def index():
                             json.dumps(cv) for cv in chord_voicings
                         ]
 
+    pitch_min, pitch_max = _piano_roll_bounds(result) if result else (48, 72)
+    result_num_voices = len(result.voices) if result else 0
+    piano_roll_num_pitches = (pitch_max - pitch_min + 1) if result else 25
+
     return render_template_string(
         INDEX_TEMPLATE,
         error=error,
         result=result,
         note_names_by_voice=note_names_by_voice,
         result_step_count=len(result.chords) if result else 0,
+        result_num_voices=result_num_voices,
+        pitch_min=pitch_min,
+        pitch_max=pitch_max,
+        piano_roll_num_pitches=piano_roll_num_pitches,
         voices=voices,
         progression=progression_text,
         midi_available=midi_available,

@@ -667,6 +667,9 @@ def voice_leading_cost(
         major_7th_pc = (curr_chord.root_pc + 11) % 12
         if major_7th_pc in curr_chord.pitches and (curr[0] % 12) == major_7th_pc:
             cost += 6.0
+    # Penalty for doubling the 3rd in triads (major or minor)
+    if curr_chord is not None:
+        cost += _doubling_third_cost(curr, curr_chord)
     if prev is None:
         return cost + chord_internal_cost(curr, w)
 
@@ -735,6 +738,27 @@ def voice_leading_cost(
 
     cost += chord_internal_cost(curr, w)
     return cost
+
+
+def _third_pc(chord: Chord) -> Optional[int]:
+    """Pitch class of the chord's 3rd (major or minor) if present (triad or triad-based). Else None."""
+    root = chord.root_pc
+    major_3rd = (root + 4) % 12
+    minor_3rd = (root + 3) % 12
+    if major_3rd in chord.pitches:
+        return major_3rd
+    if minor_3rd in chord.pitches:
+        return minor_3rd
+    return None
+
+
+def _doubling_third_cost(voicing: Tuple[int, ...], chord: Chord) -> float:
+    """Penalty when the 3rd of a triad is doubled (two or more voices on the 3rd)."""
+    third = _third_pc(chord)
+    if third is None or not voicing:
+        return 0.0
+    count = sum(1 for n in voicing if (n % 12) == third)
+    return 2.0 if count >= 2 else 0.0
 
 
 def _bass_root_preference_cost(voicing: Tuple[int, ...], chord: Chord) -> float:
