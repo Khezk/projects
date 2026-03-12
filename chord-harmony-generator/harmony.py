@@ -723,6 +723,9 @@ def voice_leading_cost(
         # Lowest two voices (bass and next): penalty when 1 or 2 semitones apart (muddy spacing)
         if i == 0 and (dist == 1 or dist == 2):
             cost += 2.0
+        # Bass and 2nd lowest forming a perfect 4th (5 semitones) — avoid in classical-style spacing
+        if i == 0 and dist % 12 == 5:
+            cost += 2.0
         # Inner voices (indices 1..n-2): extra penalty if gap too wide
         if 1 <= i <= n - 2 and dist > octave:
             cost += 0.4
