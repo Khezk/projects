@@ -18,6 +18,24 @@
 
 > 這**不是**完整的聖詠式引擎，而是一個可依需求調整與擴充的實用起點。
 
+### 快速開始（不需會程式或指令）
+
+**在 Windows 上**，若你**沒用過指令列、不知道什麼是 Bash 或程式**，可以完全用滑鼠操作：
+
+1. **第一次使用前：設定一次**
+   - 在檔案總管中打開本程式的資料夾 `chord-harmony-generator`。
+   - 找到 **`setup_harmony_app.bat`**，用滑鼠**連點兩下**執行。
+   - 會跳出一個黑色視窗並自動安裝所需檔案，請**等它跑完**（看到「完成」或視窗關閉為止）。只需做這一次，之後不用重複。
+
+2. **每次要使用程式時**
+   - 在同一資料夾裡找到 **`launch_harmony_web.bat`**，用滑鼠**連點兩下**執行。
+   - 通常會自動開啟瀏覽器並進入和聲生成器頁面；若沒有，請自己打開瀏覽器，在網址列輸入：`http://127.0.0.1:5001/` 後按 Enter。
+
+3. **在網頁裡**
+   - 在「和弦進行」欄位輸入和弦（例如：`C | F | G7 | C`），選擇聲部數量，按 **Generate Harmony**，即可看到各聲部與鋼琴捲簾，並可下載 MIDI。
+
+不需要安裝 Python、不需要打任何指令，只要會雙擊檔案和用瀏覽器即可。（若使用 Mac 或 Linux，請改看下方「安裝」與「網頁介面使用」的終端機步驟。）
+
 ### 安裝（使用輔助腳本）
 
 在 `chord-harmony-generator` 目錄下可使用提供的 Windows 設定腳本：
@@ -170,6 +188,24 @@ This is a small Python application that:
 The core logic is in `harmony.py` and uses a simple search that chooses, for each chord, the voicing that minimizes a voice-leading cost from the previous chord.
 
 > This is **not** a complete chorale-style engine, but a practical starting point that you can tune and extend.
+
+## Quick start (no programming needed)
+
+**On Windows**, if you **don’t use the command line and don’t know what Bash or coding is**, you can run everything by double‑clicking:
+
+1. **First time only: one-time setup**
+   - Open the program folder `chord-harmony-generator` in File Explorer.
+   - Find **`setup_harmony_app.bat`** and **double‑click** it.
+   - A black window will open and install the required files. **Wait until it finishes** (you’ll see it complete or the window close). You only need to do this once.
+
+2. **Every time you want to use the app**
+   - In the same folder, find **`launch_harmony_web.bat`** and **double‑click** it.
+   - Your browser should open automatically to the harmony generator page. If it doesn’t, open your browser yourself and go to: **`http://127.0.0.1:5001/`**
+
+3. **On the web page**
+   - Type your chord progression in the text box (e.g. `C | F | G7 | C`), choose the number of voices, and click **Generate Harmony**. You’ll see the voices and piano roll and can download the MIDI.
+
+You don’t need to install Python or type any commands—just double‑click the files and use the browser. (On Mac or Linux, use the **Installation** and **Web UI Usage** steps below with the terminal.)
 
 ## Installation (with helper script)
 
