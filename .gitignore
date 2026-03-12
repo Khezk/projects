@@ -14,3 +14,7 @@ __pycache__/
 .idea/
 .vscode/
 .DS_Store
+
+# Generated output
+output.mid
+chord-harmony-generator/output.mid
